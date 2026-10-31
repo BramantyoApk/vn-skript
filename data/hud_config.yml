@@ -37,6 +37,7 @@ elements:
     align: left
     outline: true
   bottom_cinematic_fade:
+    enabled: false
     x: 0
     y: -45
     scale: 2.0
