@@ -16,6 +16,7 @@ elements:
     scale: 1.0
     layer: 4
   speaker_text:
+    enabled: false
     x: -13
     y: 41
     scale: 0.52
