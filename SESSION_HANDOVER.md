@@ -183,4 +183,33 @@ Bila membuka sesi baru, gunakan urutan verifikasi berikut:
     ```
   - `vn_dialog_layout` tetap terisolasi tanpa pergeseran lebar kontainer, dan fade transparan hitam (alpha gradien 0->220) dirender mulus di latar belakang.
 
+---
+
+## 8. Laporan Investigasi Visual In-Game (Screenshot 1, 2, 3)
+
+### A. Temuan Masalah & Ketidaksesuaian Visual
+1. **Kotak Dialog Terlempar Jauh ke Kanan Bawah**:
+   - Kotak dialog (`dialogue_box.png`) merender di pojok kanan bawah layar pemain, menabrak tangan/item pemain, alih-alih berada tepat di tengah bawah layar.
+   - **Akar Masalah**:
+     Di `data/hud_config.yml`, `dialog_box` memiliki offset `x: 50`. Ditambah dengan `popup_pixel_x = -126`, kotak bergeser ke kanan. Selain itu, layout BetterHUD menggunakan `align: left` dan `offset: left`, di mana `LayoutComponentContainer` menghitung:
+     $$\text{container\_offset} = 0$$
+     Sedangkan seluruh kalkulasi koordinat di `hud_config.yml` berasumsi titik tengah layar dengan `dialog_box` bergeser relatif terhadap anchor.
+2. **Potret Karakter Terlempar Jauh ke Kiri Bawah**:
+   - Potret Luna (`portrait_luna_*`) merender terpisah di pojok kiri bawah layar dekat tepi kiri GUI, terputus jauh dari kotak dialog.
+   - **Akar Masalah**:
+     Di `hud_config.yml`, potret memiliki `x: -39`, namun karena container di-offset ke kiri pada anchor popup `x: -126`, potret merender di posisi layar $-126 - 39 = -165$ (terlalu jauh ke kiri dari dialog box yang berada di $-126 + 50 = -76$). Potret dan kotak tidak berada dalam satu kesatuan bounding box yang pas.
+3. **Teks Dialog & Nameplate Tidak Muncul**:
+   - Di ketiga screenshot, area teks di dalam kotak dialog kosong (tidak ada nama pembicara maupun isi dialog).
+   - **Akar Masalah**:
+     Teks memiliki `split-width: 202` dan `line: 4`. Karena font atau layer z-index (`layer: 5` dan `6`), atau evaluasi placeholder Skript string kosong, teks tersembunyi atau terlempar di luar viewport/tertutup background dialog.
+4. **Cinematic Fade**:
+   - Fade hitam bawah sudah aktif tanpa tofu BossBar, namun perataan horizontal dialog box dan portrait belum menyatu dengan proporsi fade.
+
+### B. Solusi yang Diperlukan di Linux/Compiler
+1. Konfigurasi `data/hud_config.yml` atau formula compiler untuk container `vn_dialog_layout`:
+   - Gunakan `offset: center` atau kunci basis kalkulasi relatif terhadap pusat kotak dialog (`dialog_box` berpusat di $X=0$).
+   - Hubungkan portrait relatif ke sisi kiri kotak dialog: $X_{\text{portrait}} = X_{\text{box}} - \text{margin}$.
+2. Verifikasi font provider `dialog_font` dan mapping variabel `skript_1` (speaker) serta `skript_2` (pesan) agar teks langsung terlihat di layer atas kotak.
+
+
 
