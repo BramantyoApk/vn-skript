@@ -1,0 +1,29 @@
+id: luna_intro
+character: luna
+trigger:
+  type: fancynpc
+  stage_required: NOT_STARTED
+lines:
+- emotion: bahagia
+  text: Glek... glek... Haah, enaknya! Minuman di desa ini benar-benar juara!
+- emotion: biasa
+  text: Syukurlah aku tidak salah jalan menempuh perjalanan jauh demi mencari pekerjaan.
+- emotion: unique
+  text: AAAA!
+- emotion: sedih
+  text: Duh, buih minumanku tumpah semua karena kamu mengagetkanku... :(
+- emotion: biasa
+  text: Eh? Tunggu dulu... Kamu orang sini?
+- emotion: bahagia
+  text: Salam kenal! Namaku Luna, anak magang baru di tempat ini!
+- emotion: biasa
+  text: Awalnya, kepala desa tiba-tiba saja mengubah bangunan ini menjadi sebuah tavern.
+- emotion: biasa
+  text: Karena aku sedang mencari lowongan pekerjaan sebagai staf quest atau staf
+    guild...
+- emotion: bahagia
+  text: Tanpa pikir panjang langsung ku-apply saja! Dan ta-da, sekarang aku terdampar
+    di sini deh!
+- emotion: biasa
+  text: Jadi, apa kamu mau mengambil quest, atau hanya ingin menemaniku minum?
+callback: CALLBACK_LUNA_INTRO

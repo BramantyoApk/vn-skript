@@ -1,0 +1,12 @@
+{
+  "pack": {
+    "pack_format": 88,
+    "min_format": 15,
+    "max_format": 200,
+    "supported_formats": {
+      "min_inclusive": 15,
+      "max_inclusive": 200
+    },
+    "description": "§6§l★ STORY VISUAL NOVEL HUD ★§r\n§eAethir Story & Karakter Dialog (26.2)"
+  }
+}

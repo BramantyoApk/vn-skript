@@ -1,0 +1,14 @@
+id: "bob"
+name: "Bob"
+speaker_name: "Bob"
+fancynpc_name: "Bob"
+fancynpc_skin: "FarmerBob"
+voice:
+  sound: ""
+  pitch: 1.0
+portraits:
+  biasa: "data/characters/bob/biasa.png"
+  bahagia: "data/characters/bob/bahagia.png"
+  marah: "data/characters/bob/marah.png"
+  sedih: "data/characters/bob/sedih.png"
+  unique: "data/characters/bob/unique.png"

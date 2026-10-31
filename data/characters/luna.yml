@@ -1,0 +1,14 @@
+id: luna
+name: Luna
+speaker_name: Luna
+fancynpc_name: Luna
+fancynpc_skin: Luna
+voice:
+  sound: ""
+  pitch: 1.0
+portraits:
+  biasa: data/characters/luna/biasa.png
+  bahagia: data/characters/luna/bahagia.png
+  marah: data/characters/luna/marah.png
+  sedih: data/characters/luna/sedih.png
+  unique: data/characters/luna/unique.png

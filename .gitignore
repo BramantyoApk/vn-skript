@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.class
+
+# Temporary analysis scripts and dumps in root
+*.txt
+*.jar
+*.bak
+dump_*.txt
+*disasm*
+temp_*
+temp_*/
+test_*.py
+decompile_*.py
+save_*.py
+inspect_*.py
+calc_*.py
+compare_*.py
+decode_*.py
+search_*.py
+trace_*.py
+verify_*.py
+watch_*.py
+sim_*.py
+get_*.py
+list_*.py
+map_*.py
+print_*.py
+run_*.py
+analyze_*.py
+mystery.py
+patch_bh_shaders.py
+betterhud.jar
+
+# Debug images
+*.png
+!textures/*.png
+!resourcepack/**/*.png
+
+# Temp work folders
+Pixel/
+kr/

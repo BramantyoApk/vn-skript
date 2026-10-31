@@ -1,0 +1,1180 @@
+# ==============================================================================
+#                       VISUAL NOVEL DIALOGUE ENGINE
+#                   Sistem Inti Dialog, HUD & Kalibrasi
+#              Target: Paper 26.2 | Skript 2.16.2 | SkBee 3.25.4 | FancyNpcs
+# ==============================================================================
+
+options:
+	prefix: &8[&6Visual Novel&8]&r
+	perm_admin: aethir.story.admin
+	no_perm: &cKamu tidak memiliki izin untuk mengakses menu ini!
+	click_debounce: 3 ticks
+	dialog_duration: 6 seconds
+
+# ==============================================================================
+#                  2. ANIMASI DAN GESTUR NPC SAAT DIALOG
+# ==============================================================================
+
+function playStoryNpcAnimation(p: player, npcName: text, emotion: text = "biasa"):
+	if {_npcName} does not contain "Luna" and "Bob":
+		stop
+
+	# Target FancyNPC
+	set {_cleanNpc} to "Luna"
+	if {_npcName} contains "Bob":
+		set {_cleanNpc} to "BOB"
+
+	# 1. Sound sync berdasarkan emosi agar terdengar hidup
+	if {_emotion} is "bahagia":
+		play sound "minecraft:entity.villager.celebrate" with volume 0.8 and pitch 1.3 at location of {_p}
+	else if {_emotion} is "sedih":
+		play sound "minecraft:entity.villager.no" with volume 0.8 and pitch 0.9 at location of {_p}
+	else if {_emotion} is "unique":
+		play sound "minecraft:entity.villager.yes" with volume 0.9 and pitch 1.4 at location of {_p}
+	else:
+		play sound "minecraft:entity.villager.ambient" with volume 0.8 and pitch 1.1 at location of {_p}
+
+# Menghadapkan target lokasi & rekam titik awal bicara
+function storyFaceLocation(p: player, loc: location):
+	if {_loc} is not set:
+		stop
+	set {_uuid} to uuid of {_p}
+	set {story::dialogue::%{_uuid}%::target_loc} to {_loc}
+	
+	# Anti-Melayang: Hanya jika pemain berbicara saat sedang loncat tinggi di udara
+	if {_p} is not on ground:
+		if block 2 below {_p} is air:
+			set {_ground} to location of {_p}
+			loop 30 times:
+				if block 1 below {_ground} is not air, water or lava:
+					exit loop
+				subtract 1 from y-coordinate of {_ground}
+			teleport {_p} to {_ground}
+
+	# Rekam titik awal berdiri saat mulai berbicara (Tanpa teleport paksa kamera!)
+	set {story::dialogue::%{_uuid}%::start_loc} to location of {_p}
+
+	# Imobilisasi lembut: slowness 1 & resistance (kebal damage monster saat membaca)
+	execute console command "effect give %{_p}% slowness 600 1 true"
+	execute console command "effect give %{_p}% resistance 600 255 true"
+
+# Jika pemain berjalan pergi menjauh dari NPC, dialog otomatis batal dan HUD menghilang
+on player move:
+	set {_u} to uuid of player
+	if {story::dialogue::%{_u}%::active} is true:
+		set {_start} to {story::dialogue::%{_u}%::start_loc}
+		if {_start} is set:
+			if distance between location of player and {_start} > 4.0:
+				storyClearDialogueQueue(player)
+				send action bar "&7[Dialog selesai karena kamu menjauh]" to player
+
+# Keep-alive refresh popup BetterHUD jika player membaca lama
+every 2 ticks:
+	loop all players:
+		set {_uuid} to uuid of loop-player
+		if {story::dialogue::%{_uuid}%::active} is true:
+			# Keep-alive re-assert setiap 30 detik (300 ticks) jika player membaca sangat lama
+			add 2 to {story::dialogue::%{_uuid}%::alive_ticks}
+			if {story::dialogue::%{_uuid}%::alive_ticks} >= 600:
+				set {story::dialogue::%{_uuid}%::alive_ticks} to 0
+				set {_step} to {story::dialogue::%{_uuid}%::step}
+				set {_speaker} to {story::dialogue::%{_uuid}%::speakers::%{_step}%}
+				set {_line} to {story::dialogue::%{_uuid}%::lines::%{_step}%}
+				set {_emotion} to {story::dialogue::%{_uuid}%::emotions::%{_step}%} ? "biasa"
+				set {_total} to {story::dialogue::%{_uuid}%::total}
+				if {_line} is set:
+					delete {_vars::*}
+					set {_vars::1} to {_speaker}
+					set {_vars::2} to {_line}
+					set {_vars::3} to "%{_step}%/%{_total}%"
+					set {_vars::4} to {_emotion}
+					show popup "vn_dialog" to loop-player with variable of {_vars::*}
+
+# Proteksi mutlak: batalkan seluruh damage ke player saat sedang membaca dialog
+on damage of player:
+	if {story::dialogue::%uuid of victim%::active} is true:
+		cancel event
+
+# ==============================================================================
+#                  2. ENGINE ANTREAN DIALOG (CLICK-TO-ADVANCE & AUTO-DISMISS)
+# ==============================================================================
+
+# Bersihkan antrean dialog pemain dan reset layar
+function storyClearDialogueQueue(p: player):
+	set {_uuid} to uuid of {_p}
+	# betterhud turn on
+	clear popup of {_p}
+	delete {story::dialogue::%{_uuid}%::*}
+	delete {story::dialogue::%{_p}%::active}
+	delete {story::dialogue::%name of {_p}%::active}
+	# top_nameplate_hud otomatis sembunyi via conditions skript_variable {story::dialogue::%hud player%::active} != 'true'
+	reset title of {_p}
+	send action bar "" to {_p}
+	remove slowness from {_p}
+	remove jump boost from {_p}
+	remove resistance from {_p}
+	execute console command "npc turn_to_player Luna true"
+	# execute console command "npc turn_to_player BOB true"
+
+# Menambahkan baris teks ke antrean dialog dengan aksi NPC (look: true/false, pose, targetLocation)
+function storyQueueDialogueAdv(p: player, speaker: text, line: text, sound: text, pitch: number, emotion: text = "biasa", lookPlayer: boolean = true, pose: text = "none", npcLoc: location = location of {_p}):
+	set {_uuid} to uuid of {_p}
+	if {story::dialogue::%{_uuid}%::queuing} is not true:
+		set {story::dialogue::%{_uuid}%::queuing} to true
+		set {story::dialogue::%{_uuid}%::step} to 1
+		set {story::dialogue::%{_uuid}%::total} to 0
+		set {story::dialogue::%{_uuid}%::anchor} to location of {_p}
+		clear {story::dialogue::%{_uuid}%::lines::*}
+		clear {story::dialogue::%{_uuid}%::speakers::*}
+		clear {story::dialogue::%{_uuid}%::sounds::*}
+		clear {story::dialogue::%{_uuid}%::pitches::*}
+		clear {story::dialogue::%{_uuid}%::emotions::*}
+		clear {story::dialogue::%{_uuid}%::look_player::*}
+		clear {story::dialogue::%{_uuid}%::poses::*}
+		clear {story::dialogue::%{_uuid}%::npc_locs::*}
+
+	if {_sound} is not set:
+		set {_sound} to ""
+	if {_pitch} is not set:
+		set {_pitch} to 1.0
+	if {_pitch} <= 0:
+		set {_pitch} to 1.0
+	if {_emotion} is not set:
+		set {_emotion} to "biasa"
+	if {_emotion} is "":
+		set {_emotion} to "biasa"
+	if {_lookPlayer} is not set:
+		set {_lookPlayer} to true
+	if {_pose} is not set:
+		set {_pose} to "none"
+		
+	add 1 to {story::dialogue::%{_uuid}%::total}
+	set {_idx} to {story::dialogue::%{_uuid}%::total}
+	set {story::dialogue::%{_uuid}%::speakers::%{_idx}%} to {_speaker}
+	set {story::dialogue::%{_uuid}%::lines::%{_idx}%} to {_line}
+	set {story::dialogue::%{_uuid}%::sounds::%{_idx}%} to {_sound}
+	set {story::dialogue::%{_uuid}%::pitches::%{_idx}%} to {_pitch}
+	set {story::dialogue::%{_uuid}%::emotions::%{_idx}%} to {_emotion}
+	set {story::dialogue::%{_uuid}%::look_player::%{_idx}%} to {_lookPlayer}
+	set {story::dialogue::%{_uuid}%::poses::%{_idx}%} to {_pose}
+	if {_npcLoc} is set:
+		if {_npcLoc} is not location of {_p}:
+			set {story::dialogue::%{_uuid}%::npc_locs::%{_idx}%} to {_npcLoc}
+
+# Menambahkan baris teks standar (lookPlayer default = true)
+function storyQueueDialogue(p: player, speaker: text, line: text, sound: text, pitch: number, emotion: text = "biasa"):
+	storyQueueDialogueAdv({_p}, {_speaker}, {_line}, {_sound}, {_pitch}, {_emotion}, true, "none", location of {_p})
+
+# Helper untuk menambahkan dialog sederhana
+function storyQueueDialogueSimple(p: player, speaker: text, line: text, emotion: text = "biasa"):
+	storyQueueDialogue({_p}, {_speaker}, {_line}, "minecraft:entity.villager.ambient", 1.0, {_emotion})
+
+# Memulai pemutaran antrean dialog
+function storyStartDialogueQueue(p: player, callbackId: text, targetLoc: location):
+	set {_uuid} to uuid of {_p}
+	# betterhud turn off
+	set {story::dialogue::%{_uuid}%::active} to true
+	set {story::dialogue::%{_p}%::active} to true
+	set {story::dialogue::%name of {_p}%::active} to true
+	# top_nameplate_hud otomatis sembunyi via conditions skript_variable {story::dialogue::%hud player%::active} != 'true'
+	delete {story::dialogue::%{_uuid}%::queuing}
+	set {story::dialogue::%{_uuid}%::start_time} to now
+	set {story::dialogue::%{_uuid}%::last_advance} to now
+	set {story::click_cooldown::%{_uuid}%} to now
+	set {story::dialogue::%{_uuid}%::callback} to {_callbackId}
+	set {story::dialogue::%{_uuid}%::step} to 1
+	
+	if {_targetLoc} is set:
+		storyFaceLocation({_p}, {_targetLoc})
+		
+	storyDisplayDialogueLine({_p})
+
+function storyStartDialogueSimple(p: player):
+	storyStartDialogueQueue({_p}, "", location of {_p})
+
+# ==============================================================================
+#                  3. RENDERER VISUAL NOVEL (BETTERHUD 2D SCREEN POPUP)
+# ==============================================================================
+
+function storyDisplayDialogueLine(p: player):
+	set {_uuid} to uuid of {_p}
+	set {_step} to {story::dialogue::%{_uuid}%::step}
+	set {_speaker} to {story::dialogue::%{_uuid}%::speakers::%{_step}%}
+	set {_line} to {story::dialogue::%{_uuid}%::lines::%{_step}%}
+	set {_snd} to {story::dialogue::%{_uuid}%::sounds::%{_step}%}
+	set {_pitch} to {story::dialogue::%{_uuid}%::pitches::%{_step}%}
+	set {_emotion} to {story::dialogue::%{_uuid}%::emotions::%{_step}%} ? "biasa"
+	set {_total} to {story::dialogue::%{_uuid}%::total}
+	
+	if {_line} is not set:
+		stop
+		
+	# Efek suara dialog (hanya bunyi jika custom sound disetel / tidak kosong)
+	if {story::dialogue::%{_uuid}%::last_sound_step} is not {_step}:
+		set {story::dialogue::%{_uuid}%::last_sound_step} to {_step}
+		if {_snd} is set:
+			if {_snd} is not "" or "none":
+				if {_pitch} is not set:
+					set {_pitch} to 1.0
+				play sound {_snd} with volume 1.0 and pitch {_pitch} to {_p}
+	
+	# Hapus action bar lama agar layar bawah bersih
+	send action bar "" to {_p}
+	reset title of {_p}
+	
+	# Animasi / Gestur berbicara pada NPC
+	playStoryNpcAnimation({_p}, {_speaker}, {_emotion})
+	
+	# Kontrol NPC look_player, pose & posisi per step dialog
+	set {_cleanNpc} to "Luna"
+	if {_speaker} contains "Bob":
+		set {_cleanNpc} to "BOB"
+	else if {_speaker} is "Tester VN" or "tester":
+		set {_cleanNpc} to "Tester"
+
+	# 1. Look to Player Toggle (Aktifkan / Matikan tatapan kepala NPC)
+	set {_lookPl} to {story::dialogue::%{_uuid}%::look_player::%{_step}%} ? true
+	if {_lookPl} is true:
+		execute console command "npc turn_to_player %{_cleanNpc}% true"
+	else:
+		execute console command "npc turn_to_player %{_cleanNpc}% false"
+
+	# 2. Pindahkan Posisi NPC jika step ini menentukan koordinat khusus
+	set {_customNpcLoc} to {story::dialogue::%{_uuid}%::npc_locs::%{_step}%}
+	if {_customNpcLoc} is set:
+		set {_nx} to x-coord of {_customNpcLoc}
+		set {_ny} to y-coord of {_customNpcLoc}
+		set {_nz} to z-coord of {_customNpcLoc}
+		set {_nyaw} to yaw of {_customNpcLoc}
+		set {_npitch} to pitch of {_customNpcLoc}
+		set {_nw} to name of world of {_customNpcLoc}
+		execute console command "npc teleport %{_cleanNpc}% --location %{_nx}% %{_ny}% %{_nz}% --world %{_nw}%"
+
+	# 3. Ubah Pose (sitting, crouching, standing, lying)
+	set {_stepPose} to {story::dialogue::%{_uuid}%::poses::%{_step}%} ? "none"
+	if {_stepPose} is not "none":
+		if {_stepPose} is "sit" or "sitting":
+			execute console command "npc attribute %{_cleanNpc}% pose sitting"
+		else if {_stepPose} is "crouch" or "crouching":
+			execute console command "npc attribute %{_cleanNpc}% pose crouching"
+		else if {_stepPose} is "stand" or "standing":
+			execute console command "npc attribute %{_cleanNpc}% pose standing"
+		else if {_stepPose} is "sleep" or "lying":
+			execute console command "npc attribute %{_cleanNpc}% pose sleeping"
+	
+	# Siapkan variabel data dialog untuk BetterHud Popup (1 = speaker, 2 = line, 3 = step, 4 = emotion)
+	delete {_vars::*}
+	set {_vars::1} to {_speaker}
+	set {_vars::2} to {_line}
+	set {_vars::3} to "%{_step}%/%{_total}%"
+	set {_vars::4} to {_emotion}
+	
+	# Munculkan Popup Dialog Visual Novel 2D di layar
+	clear popup of {_p}
+	show popup "vn_dialog" to {_p} with variable of {_vars::*}
+
+# Memajukan dialog ke baris berikutnya (Click-to-Advance)
+function storyAdvanceDialogue(p: player):
+	set {_uuid} to uuid of {_p}
+	if {story::dialogue::%{_uuid}%::active} is not true:
+		stop
+		
+	# Cegah skip dialog di awal (grace period 4 ticks saat dialog baru dibuka)
+	set {_waitedStart} to difference between {story::dialogue::%{_uuid}%::start_time} and now
+	if {_waitedStart} is less than 4 ticks:
+		stop
+		
+	# Cooldown debounce klik mouse
+	set {_waited} to difference between {story::dialogue::%{_uuid}%::last_advance} and now
+	if {_waited} is less than {@click_debounce}:
+		stop
+	set {story::dialogue::%{_uuid}%::last_advance} to now
+	set {story::click_cooldown::%{_uuid}%} to now
+	
+	add 1 to {story::dialogue::%{_uuid}%::step}
+	set {_step} to {story::dialogue::%{_uuid}%::step}
+	set {_total} to {story::dialogue::%{_uuid}%::total}
+	
+	play sound "minecraft:ui.button.click" with volume 0.6 and pitch 1.4 to {_p}
+	
+	# Jika antrean masih ada, tampilkan baris berikutnya
+	if {_step} <= {_total}:
+		storyDisplayDialogueLine({_p})
+	else:
+		# Dialog selesai!
+		set {_cb} to {story::dialogue::%{_uuid}%::callback}
+		storyClearDialogueQueue({_p})
+		set {story::dialogue_finish_cooldown::%{_uuid}%} to now
+		
+		# Eksekusi callback jika ada
+		if {_cb} is set:
+			if {_cb} is not "":
+				vnTriggerCallback({_p}, {_cb})
+
+# ==============================================================================
+#                  4. PILIHAN BERCABANG (MURNI INVENTORY GUI)
+# ==============================================================================
+
+function showStoryChoice(p: player, choice_id: text, textA: text, actionA: text, textB: text, actionB: text):
+	set {_uuid} to uuid of {_p}
+	set {story::choice::%{_uuid}%::id} to {_choice_id}
+	set {story::choice::%{_uuid}%::actionA} to {_actionA}
+	set {story::choice::%{_uuid}%::actionB} to {_actionB}
+	set {story::choice::%{_uuid}%::textA} to {_textA}
+	set {story::choice::%{_uuid}%::textB} to {_textB}
+	
+	# Buka Chest GUI Interaktif (Ramah Mouse & Layar Sentuh Bedrock)
+	set {_gui} to a new chest inventory with 3 rows named "&8[&6Pilihan Jawaban&8]"
+	
+	# Background glass
+	loop 27 times:
+		set slot (loop-number - 1) of {_gui} to gray stained glass pane named "&7"
+		
+	set slot 11 of {_gui} to lime concrete named "&a&l%{_textA}%" with lore "&7Klik pilihan ini untuk menjawab."
+	set slot 15 of {_gui} to red concrete named "&c&l%{_textB}%" with lore "&7Klik pilihan ini untuk menjawab."
+	open {_gui} to {_p}
+
+# Tangkap klik GUI Pilihan
+on inventory click:
+	if name of event-inventory is "&8[&6Pilihan Jawaban&8]":
+		cancel event
+		set {_uuid} to uuid of player
+		if {story::choice::%{_uuid}%::id} is not set:
+			close player's inventory
+			stop
+			
+		if index of event-slot is 11:
+			close player's inventory
+			vnProcessChoice(player, 1)
+		else if index of event-slot is 15:
+			close player's inventory
+			vnProcessChoice(player, 2)
+
+# Memproses pilihan pemain
+function vnProcessChoice(p: player, option: integer):
+	set {_uuid} to uuid of {_p}
+	set {_choiceId} to {story::choice::%{_uuid}%::id}
+	set {_actA} to {story::choice::%{_uuid}%::actionA}
+	set {_actB} to {story::choice::%{_uuid}%::actionB}
+	
+	delete {story::choice::%{_uuid}%::*}
+	
+	if {_option} is 1:
+		play sound "minecraft:entity.experience_orb.pickup" with volume 1.0 and pitch 1.2 to {_p}
+		vnTriggerChoiceCallback({_p}, {_choiceId}, {_actA})
+	else if {_option} is 2:
+		play sound "minecraft:ui.button.click" with volume 1.0 and pitch 0.8 to {_p}
+		vnTriggerChoiceCallback({_p}, {_choiceId}, {_actB})
+
+# (Handler callback pilihan & selesai dipusatkan di Bagian 11)
+
+# ==============================================================================
+#                  5. TRIGGER KLIK LAYAR & SNEAK (SHIFT) UNTUK MAJUKAN DIALOG
+# ==============================================================================
+
+on sneak toggle:
+	if player is sneaking:
+		if {story::dialogue::%uuid of player%::active} is true:
+			storyAdvanceDialogue(player)
+
+on left click:
+	if {story::dialogue::%uuid of player%::active} is true:
+		set {_waited} to difference between {story::click_cooldown::%uuid of player%} and now
+		if {_waited} is less than {@click_debounce}:
+			stop
+		set {story::click_cooldown::%uuid of player%} to now
+		storyAdvanceDialogue(player)
+
+on right click:
+	if {story::dialogue::%uuid of player%::active} is true:
+		# Jangan eksekusi jika klik entity / NPC untuk mencegah spam
+		if target entity is set:
+			stop
+		set {_waited} to difference between {story::click_cooldown::%uuid of player%} and now
+		if {_waited} is less than {@click_debounce}:
+			stop
+		set {story::click_cooldown::%uuid of player%} to now
+		storyAdvanceDialogue(player)
+
+# (Handler klik kanan villager dipusatkan di Bagian 11)
+
+# ==============================================================================
+#                  6. HANDLER DIALOG KALIBRASI NPC (TESTER VN)
+# ==============================================================================
+
+function handleTesterVN(p: player, loc: location):
+	set {_uuid} to uuid of {_p}
+	
+	# Jika sedang aktif, klik untuk memajukan dialog
+	if {story::dialogue::%{_uuid}%::active} is true:
+		storyAdvanceDialogue({_p})
+		stop
+		
+	# Jeda 2 detik setelah dialog selesai
+	set {_waitedFin} to difference between {story::dialogue_finish_cooldown::%{_uuid}%} and now
+	if {_waitedFin} is less than 2 seconds:
+		set {_sisa} to difference between 2 seconds and {_waitedFin}
+		send action bar "&7[Tester sedang siap... Tunggu %{_sisa}%]" to {_p}
+		stop
+		
+	storyClearDialogueQueue({_p})
+	
+	# Baris 1: Biasa (Neutral)
+	storyQueueDialogue({_p}, "Luna", "Halo! Ini adalah tes potret ekspresi emosi Visual Novel. Sekarang aku berekspresi netral (biasa).", "minecraft:entity.villager.ambient", 1.0, "biasa")
+	
+	# Baris 2: Bahagia (Happy)
+	storyQueueDialogue({_p}, "Luna", "Wah, lihat! Sekarang aku tersenyum ceria dan pipiku merona (bahagia)!", "minecraft:entity.villager.yes", 1.2, "bahagia")
+	
+	# Baris 3: Marah (Angry)
+	storyQueueDialogue({_p}, "Luna", "Hmph! Siapa yang berani mengacak-acak kebun bungaku?! (marah)", "minecraft:entity.villager.no", 0.9, "marah")
+	
+	# Baris 4: Sedih (Sad)
+	storyQueueDialogue({_p}, "Luna", "Hiks... bibit tanaman langkaku layu semua karena embun beku semalam... (sedih)", "minecraft:block.sculk_sensor.clicking", 0.8, "sedih")
+	
+	# Baris 5: Unique / Kustom (Shocked / Flustered)
+	storyQueueDialogue({_p}, "Luna", "Eeehh?! M-monster itu tiba-tiba melompat tepat di depanku?! (unique)", "minecraft:block.note_block.bell", 1.3, "unique")
+	
+	storyStartDialogueQueue({_p}, "CALLBACK_TESTER_CALIBRATION", {_loc})
+
+# ==============================================================================
+#                  7. PERINTAH /VN & SPAWN NPC TESTING
+# ==============================================================================
+
+command /vn [<text>] [<text>] [<text>] [<text>] [<text>]:
+	description: Perintah pengujian dan konfigurasi sistem Visual Novel
+	trigger:
+		set {_p} to player
+		if {_p} is not set:
+			loop all players:
+				set {_p} to loop-player
+				exit loop
+		set {_sub} to arg-1 ? "help"
+		
+		if {_sub} is "help":
+			send "" to player
+			send "{@prefix} &e&lPANDUAN VISUAL NOVEL TESTING:" to player
+			send "&6/vn test &7- Jalankan dialog uji coba Visual Novel" to player
+			send "&6/vn cutscene <set|play|delete> ... &7- Atur pose/kamera cutscene NPC" to player
+			send "&6/vn spawn &7- Munculkan NPC Tester VN di posisi pemain" to player
+			send "&6/vn spawnluna &7- Munculkan NPC Luna di posisi pemain" to player
+			send "&6/vn daily &7- Buka menu Luna's Daily Board" to player
+			send "&6/vn mode <hud|fallback> &7- Ganti mode tampilan HUD" to player
+			send "&6/vn next &7- Majukan dialog aktif secara manual" to player
+			send "&6/vn stop &7- Hentikan dialog aktif dan reset layar" to player
+			send "&6/vn reset &7- Reset cerita Luna dari awal (Chapter 1)" to player
+			send "&6/vn reload &7- Muat ulang script visual novel" to player
+			send "" to player
+			stop
+			
+		else if {_sub} is "cutscene":
+			make player execute "cutscene %arg-2 ? """" % %arg-3 ? """" % %arg-4 ? """" % %arg-5 ? """" %"
+			
+		else if {_sub} is "test":
+			handleTesterVN({_p}, location of {_p})
+			
+		else if {_sub} is "testbox":
+			show popup "test_box" to {_p}
+			send "{@prefix} &a[TEST] Menampilkan test_box popup!" to {_p}
+
+		else if {_sub} is "testdialog":
+			delete {_testvars::*}
+			set {_testvars::1} to "Luna"
+			set {_testvars::2} to "Halo dari testdialog manual!"
+			set {_testvars::3} to "1/1"
+			set {_testvars::4} to "biasa"
+			show popup "vn_dialog" to {_p} with variable of {_testvars::*}
+			send "{@prefix} &a[TEST] Menampilkan popup vn_dialog dengan variabel!" to {_p}
+
+		else if {_sub} is "clearbox":
+			clear popup of {_p}
+			send "{@prefix} &e[TEST] Membersihkan popup!" to {_p}
+
+		else if {_sub} is "reloadhud":
+			execute console command "hud reload"
+			send "{@prefix} &a[HUD] Console executed 'hud reload'!" to console and all players
+			
+		else if {_sub} is "daily":
+			openDailyQuestGUI(player)
+			
+		else if {_sub} is "spawnluna":
+			set {_loc} to location of player
+			set {_x} to x-coord of player
+			set {_y} to y-coord of player
+			set {_z} to z-coord of player
+			set {_w} to name of world of player
+			make player execute "/npc create Luna"
+			execute console command "npc create Luna --location %{_x}% %{_y}% %{_z}% --world %{_w}%"
+			execute console command "npc displayname Luna &d&lLuna &7[Bicara]"
+			execute console command "npc turn_to_player Luna true"
+			execute console command "npc action Luna ANY_CLICK clear"
+			execute console command "npc action Luna RIGHT_CLICK clear"
+			execute console command "npc action Luna LEFT_CLICK clear"
+			execute console command "npc action Luna ANY_CLICK add console_command story interact {player} Luna"
+			play sound "minecraft:entity.experience_orb.pickup" with volume 1.0 and pitch 1.2 to player
+			send "{@prefix} &aFancyNPC &dLuna &aberhasil dibuat di lokasimu!" to player
+			send "{@prefix} &7- Nama: Luna | Head Tracking: Aktif | Trigger: /story interact {player} Luna" to player
+			
+		else if {_sub} is "spawn":
+			# Spawn NPC Villager NoAI Invulnerable di lokasi pemain
+			set {_loc} to location of player
+			spawn 1 of villager at {_loc}
+			set {_npc} to last spawned villager
+			set display name of {_npc} to "&b&lTester VN &7[Klik]"
+			execute console command "data merge entity %uuid of {_npc}% {NoAI:1b,Invulnerable:1b,Silent:1b,PersistenceRequired:1b}"
+			apply resistance 5 to {_npc} for 999 days
+			play sound "minecraft:entity.experience_orb.pickup" with volume 1.0 and pitch 1.2 to player
+			send "{@prefix} &aNPC &bTester VN &aberhasil dimunculkan di posisimu! Klik kanan untuk uji dialog." to player
+			
+		else if {_sub} is "mode":
+			set {_mode} to arg-2
+			if {_mode} is "hud" or "fallback":
+				set {story::player_mode::%uuid of player%} to {_mode}
+				send "{@prefix} &aMode tampilan visual novel diubah ke: &e%{_mode}%" to player
+			else:
+				send "{@prefix} &cGunakan: /vn mode <hud|fallback>" to player
+				
+		else if {_sub} is "next":
+			storyAdvanceDialogue(player)
+			
+		else if {_sub} is "stop":
+			storyClearDialogueQueue(player)
+			send "{@prefix} &eDialog aktif telah dihentikan." to player
+			
+		else if {_sub} is "reset" or "restart":
+			if player is not op:
+				if player does not have permission "{@perm_admin}":
+					send "{@prefix} {@no_perm}" to player
+					stop
+
+			set {_target} to player
+			set {_arg2} to arg-2
+			set {_arg3} to arg-3
+			set {_arg4} to arg-4
+
+			set {_targetName} to ""
+			set {_npcArg} to ""
+			set {_dialogArg} to ""
+
+			# Cek apakah arg-2 adalah nama player online
+			if {_arg2} is set:
+				set {_checkPlayer} to {_arg2} parsed as player
+				if {_checkPlayer} is set:
+					set {_target} to {_checkPlayer}
+					set {_targetName} to {_arg2}
+					set {_npcArg} to {_arg3}
+					set {_dialogArg} to {_arg4}
+				else if {_arg2} is "luna" or "bob" or "tester":
+					# User mengetik: /vn reset luna [dialog] (tanpa player, target diri sendiri)
+					set {_target} to player
+					set {_npcArg} to {_arg2}
+					set {_dialogArg} to {_arg3}
+				else:
+					send "{@prefix} &cPemain '%{_arg2}%' tidak ditemukan/offline." to player
+					stop
+
+			set {_u} to uuid of {_target}
+			storyClearDialogueQueue({_target})
+			delete {story::dialogue_finish_cooldown::%{_u}%}
+
+			# KASUS 1: /vn reset [player] [npc] [dialog]
+			if {_dialogArg} is not "":
+				set {_dlg} to {_dialogArg}
+				if {_dlg} is "intro":
+					delete {story::%{_npcArg}%::%{_u}%::stage}
+					send "{@prefix} &aDialog &e%{_dlg}% &auntuk NPC &e%{_npcArg}% &aberhasil di-reset untuk &e%{_target}%&a!" to player
+				else if {_dlg} is "stage" or "cabbage" or "pre":
+					delete {quest::%{_u}%::stage}
+					delete {quest::%{_u}%::cabbage_sub}
+					send "{@prefix} &aQuest prasyarat &e5 Kubis &auntuk NPC &e%{_npcArg}% &aberhasil di-reset untuk &e%{_target}%&a!" to player
+				else if {_dlg} is "q1" or "wheat":
+					set {story::ch1::%{_u}%::stage} to "NOT_STARTED"
+					send "{@prefix} &aStory Chapter 1 &eWheat &aberhasil di-reset untuk &e%{_target}%&a!" to player
+				else if {_dlg} is "q2" or "harvest":
+					set {story::ch1::%{_u}%::stage} to "Q2_ACTIVE"
+					delete {story::ch1::%{_u}%::apple_sub}
+					delete {story::ch1::%{_u}%::carrot_sub}
+					send "{@prefix} &aStory Chapter 1 &eApple/Carrot &aberhasil di-reset untuk &e%{_target}%&a!" to player
+				else:
+					# Reset spesifik stage sesuai input
+					delete {story::%{_npcArg}%::%{_u}%::stage}
+					delete {story::%{_npcArg}%::%{_u}%::%{_dlg}%}
+					send "{@prefix} &aDialog/data &e%{_dlg}% &apada NPC &e%{_npcArg}% &adi-reset untuk &e%{_target}%&a!" to player
+
+			# KASUS 2: /vn reset [player] [npc] -> Reset SEMUA progres NPC tersebut
+			else if {_npcArg} is not "":
+				set {_npcLower} to {_npcArg}
+				delete {story::%{_npcLower}%::%{_u}%::*}
+				if {_npcLower} is "luna":
+					delete {story::ch1::%{_u}%::*}
+					delete {quest::%{_u}%::stage}
+					delete {quest::%{_u}%::cabbage_sub}
+					delete {story::choice::%{_u}%::*}
+				send "{@prefix} &aSeluruh riwayat dialog dan quest &e%{_npcArg}% &aberhasil di-reset total untuk &e%{_target}%&a!" to player
+
+			# KASUS 3: /vn reset [player] atau /vn reset -> Reset semua story & quest pemain
+			else:
+				delete {story::ch1::%{_u}%::*}
+				delete {story::luna::%{_u}%::*}
+				delete {story::bob::%{_u}%::*}
+				delete {story::choice::%{_u}%::*}
+				delete {quest::%{_u}%::stage}
+				delete {quest::%{_u}%::cabbage_sub}
+				send "{@prefix} &aSemua progres dialog, cerita NPC, dan quest &aberhasil di-reset ke awal untuk &e%{_target}%&a!" to player
+			
+		else if {_sub} is "clearnpc":
+			set {_count} to 0
+			loop all villagers in radius 5 of player:
+				delete loop-entity
+				add 1 to {_count}
+			send "{@prefix} &aBerhasil menghapus %{_count}% NPC dalam radius 5 blok." to player
+			
+		else if {_sub} is "pack":
+			if player is op:
+				execute console command "betterhud reload"
+				send "{@prefix} &eMengompilasi BetterHud pack..." to player
+				wait 6 seconds
+				# execute console command "betterhud pack"
+				execute console command "rspm reload"
+				send "{@prefix} &aResourcePackManager berhasil diperbarui & resource pack dikirim!" to player
+			else:
+				send "{@prefix} {@no_perm}" to player
+
+		else if {_sub} is "reload":
+			if player is op:
+				execute console command "sk disable story_core.sk"
+				execute console command "sk disable story_dialogues.sk"
+				execute console command "sk disable story_cutscene.sk"
+				execute console command "sk disable story_custom_dialog.sk"
+				execute console command "sk disable server_security.sk"
+				execute console command "sk reload story/story_core.sk"
+				execute console command "sk reload story/story_dialogues.sk"
+				execute console command "sk reload story/story_cutscene.sk"
+				execute console command "sk reload story/story_custom_dialog.sk"
+				execute console command "sk reload story/server_security.sk"
+				execute console command "sk reload msmp_quests.sk"
+				execute console command "sk reload msmp_farming.sk"
+				send "{@prefix} &aFolder story/ dan seluruh modul berhasil dimuat ulang!" to player
+			else if player has permission "{@perm_admin}":
+				execute console command "sk disable story_core.sk"
+				execute console command "sk disable story_dialogues.sk"
+				execute console command "sk disable story_cutscene.sk"
+				execute console command "sk disable story_custom_dialog.sk"
+				execute console command "sk disable server_security.sk"
+				execute console command "sk reload story/story_core.sk"
+				execute console command "sk reload story/story_dialogues.sk"
+				execute console command "sk reload story/story_cutscene.sk"
+				execute console command "sk reload story/story_custom_dialog.sk"
+				execute console command "sk reload story/server_security.sk"
+				execute console command "sk reload msmp_quests.sk"
+				execute console command "sk reload msmp_farming.sk"
+				send "{@prefix} &aFolder story/ dan seluruh modul berhasil dimuat ulang!" to player
+			else:
+				send "{@prefix} {@no_perm}" to player
+
+on tab complete of "/vn":
+	set tab completions for position 1 to "test", "cutscene", "testbox", "clearbox", "spawn", "spawnluna", "clearnpc", "daily", "mode", "next", "stop", "reset", "pack" and "reload"
+	if tab arg-1 is "mode":
+		set tab completions for position 2 to "hud" and "fallback"
+	else if tab arg-1 is "cutscene":
+		set tab completions for position 2 to "set", "play", "delete", "list" and "help"
+		set tab completions for position 3 to "luna", "bob" and "tester"
+		set tab completions for position 4 to "intro", "ch1", "idle" and "tavern"
+		set tab completions for position 5 to "1", "2", "3", "4" and "5"
+		set tab completions for position 6 to "stand", "sit", "crouch" and "sleep"
+	else if tab arg-1 is "reset":
+		set tab completions for position 2 to all players, "luna", "bob" and "tester"
+		set tab completions for position 3 to "luna", "bob", "tester", "intro", "pre", "q1" and "q2"
+		set tab completions for position 4 to "intro", "pre", "q1" and "q2"
+
+# Perintah jembatan untuk FancyNpcs (/story interact <npc> atau /story interact <player> <npc>)
+command /story [<text>] [<text>] [<text>]:
+	description: Perintah interaksi NPC cerita
+	trigger:
+		if arg-1 is "interact":
+			set {_targetPlayer} to player
+			set {_npc} to arg-2
+			if arg-3 is set:
+				set {_p} to arg-2 parsed as player
+				if {_p} is set:
+					set {_targetPlayer} to {_p}
+					set {_npc} to arg-3
+			
+			set {_u} to uuid of {_targetPlayer}
+
+			# Cari lokasi nyata dari NPC yang diajak bicara agar kamera player bisa force look
+			set {_npcLoc} to location of {_targetPlayer}
+			loop all entities in radius 6 of {_targetPlayer}:
+				if uncolored name of loop-entity contains {_npc}:
+					set {_npcLoc} to location of loop-entity
+					exit loop
+			if {_npcLoc} is location of {_targetPlayer}:
+				if targeted entity of {_targetPlayer} is set:
+					set {_npcLoc} to location of targeted entity of {_targetPlayer}
+				else if {npc::luna::location} is set:
+					set {_npcLoc} to {npc::luna::location}
+
+			# Jika sedang berada di dalam dialog: JANGAN BUKA / SPAM DIALOG BARU
+			# Kecuali jika pemain sedang memegang item quest di tangan untuk disetor
+			if {story::dialogue::%{_u}%::active} is true:
+				set {_tool} to tool of {_targetPlayer}
+				set {_hasQuestItem} to false
+				if custom model data of {_tool} is 78311:
+					set {_hasQuestItem} to true
+				else if uncolored name of {_tool} contains "Cabbage" or "Kubis":
+					set {_hasQuestItem} to true
+				else if {_tool} is apple or carrot:
+					set {_hasQuestItem} to true
+				
+				if {_hasQuestItem} is true:
+					questHandleLunaInteract({_targetPlayer}, {_npcLoc})
+				stop
+			
+			if {_npc} is "tester" or "tester_vn":
+				handleTesterVN({_targetPlayer}, {_npcLoc})
+			else if {_npc} contains "Luna" or "luna":
+				# Prioritas 1: Jika pemain belum pernah berkenalan (INTRO belum selesai)
+				set {_lunaStage} to {story::luna::%{_u}%::stage} ? "NOT_STARTED"
+				if {_lunaStage} is "NOT_STARTED":
+					storyRouteNpcDialogue({_targetPlayer}, "Luna", {_npcLoc})
+				else:
+					# Prioritas 2: Quest hand-in atau daily menu setelah berkenalan
+					if questHandleLunaInteract({_targetPlayer}, {_npcLoc}) is not true:
+						storyRouteNpcDialogue({_targetPlayer}, {_npc}, {_npcLoc})
+			else:
+				storyRouteNpcDialogue({_targetPlayer}, {_npc}, {_npcLoc})
+		else if arg-1 is "status":
+			send "{@prefix} &7Visual Novel Engine v2.2 (Decoupled Static HUD) - Ready." to player
+
+on tab complete of "/story":
+	set tab completions for position 1 to "interact" and "status"
+	if tab arg-1 is "interact":
+		set tab completions for position 2 to "tester", "luna" and "bob"
+
+# ==============================================================================
+#                  8. ITEM FACTORY & INVENTORY UTILITIES (100% ENGLISH ITEMS)
+# ==============================================================================
+
+function getStoryItem(id: text, amount: integer = 1) :: item:
+	if {_id} is "ruby":
+		set {_i} to {_amount} of paper
+		set name of {_i} to "&c&lRuby"
+		set custom model data of {_i} to 200350
+		set line 1 of lore of {_i} to "&7Pure crimson gemstone used as primary currency."
+		return {_i}
+	else if {_id} is "fresh_cabbage":
+		set {_i} to {_amount} of apple
+		set name of {_i} to "&aFresh Cabbage"
+		set custom model data of {_i} to 78311
+		set line 1 of lore of {_i} to "&7Crisp leafy cabbage straight from the patch."
+		set line 2 of lore of {_i} to "&8[Quest Item / Memory Trigger]"
+		return {_i}
+	else if {_id} is "vegetable_sandwich":
+		set {_i} to {_amount} of bread
+		set name of {_i} to "&eVegetable Sandwich"
+		set custom model data of {_i} to 78210
+		set line 1 of lore of {_i} to "&7A hearty sandwich layered with garden greens."
+		return {_i}
+	else if {_id} is "photo_fragment_1":
+		set {_i} to {_amount} of paper
+		set name of {_i} to "&fOld Photo Fragment &8[1/4]"
+		set custom model data of {_i} to 200706
+		set line 1 of lore of {_i} to "&7A faded, water-damaged photographic slip."
+		set line 2 of lore of {_i} to "&8Contains glitch memory traces."
+		return {_i}
+	else if {_id} is "cured_leather":
+		set {_i} to {_amount} of leather
+		set name of {_i} to "&6Tough Hide"
+		set line 1 of lore of {_i} to "&7Sturdy animal hide suitable for expedition packs."
+		return {_i}
+	else if {_id} is "frost_bone":
+		set {_i} to {_amount} of bone
+		set name of {_i} to "&fChilled Bone"
+		set line 1 of lore of {_i} to "&7Remains of skeletons prowling the valley ridge."
+		return {_i}
+	return air
+
+function countStoryItem(p: player, targetName: text, targetCmd: integer) :: integer:
+	set {_count} to 0
+	loop all items in {_p}'s inventory:
+		if name of loop-item is {_targetName}:
+			if custom model data of loop-item is {_targetCmd}:
+				add item amount of loop-item to {_count}
+	return {_count}
+
+function removeStoryItem(p: player, targetName: text, targetCmd: integer, amount: integer) :: boolean:
+	if countStoryItem({_p}, {_targetName}, {_targetCmd}) < {_amount}:
+		return false
+	set {_toRemove} to {_amount}
+	loop all items in {_p}'s inventory:
+		if {_toRemove} <= 0:
+			stop loop
+		if name of loop-item is {_targetName}:
+			if custom model data of loop-item is {_targetCmd}:
+				set {_amt} to item amount of loop-item
+				if {_amt} <= {_toRemove}:
+					subtract {_amt} from {_toRemove}
+					remove loop-item from {_p}'s inventory
+				else:
+					set item amount of loop-item to ({_amt} - {_toRemove})
+					set {_toRemove} to 0
+	return true
+
+function countVanillaItem(p: player, mat: item type) :: integer:
+	set {_count} to 0
+	loop all items in {_p}'s inventory:
+		if loop-item is {_mat}:
+			if name of loop-item is not set:
+				add item amount of loop-item to {_count}
+	return {_count}
+
+function removeVanillaItem(p: player, mat: item type, amount: integer) :: boolean:
+	if countVanillaItem({_p}, {_mat}) < {_amount}:
+		return false
+	set {_toRemove} to {_amount}
+	loop all items in {_p}'s inventory:
+		if {_toRemove} <= 0:
+			stop loop
+		if loop-item is {_mat}:
+			if name of loop-item is not set:
+				set {_amt} to item amount of loop-item
+				if {_amt} <= {_toRemove}:
+					subtract {_amt} from {_toRemove}
+					remove loop-item from {_p}'s inventory
+				else:
+					set item amount of loop-item to ({_amt} - {_toRemove})
+					set {_toRemove} to 0
+	return true
+
+# ==============================================================================
+#                  9. LUNA FRIENDSHIP & CHAPTER 1 QUEST SYSTEM
+# ==============================================================================
+
+function getLunaHearts(p: player) :: integer:
+	return 0
+
+function addLunaHearts(p: player, amount: integer):
+	stop
+
+function handleLunaInteract(p: player, loc: location):
+	set {_uuid} to uuid of {_p}
+	
+	if {story::dialogue::%{_uuid}%::active} is true:
+		storyAdvanceDialogue({_p})
+		stop
+		
+	set {_waitedFin} to difference between {story::dialogue_finish_cooldown::%{_uuid}%} and now
+	if {_waitedFin} is less than 2 seconds:
+		stop
+		
+	storyClearDialogueQueue({_p})
+	
+	# Status Alur Cerita Chapter 1
+	set {_stage} to {story::ch1::%{_uuid}%::stage} ? "NOT_STARTED"
+	
+	# Pengecekan Item Rahasia: Fresh Cabbage (Secret Memory Trigger)
+	if {_stage} is "CH1_COMPLETED":
+		if name of {_p}'s tool is "&aFresh Cabbage":
+			if custom model data of {_p}'s tool is 78311:
+				handleLunaSecretMemory({_p}, {_loc})
+				stop
+		handleLunaDailyMenu({_p}, {_loc})
+		stop
+		
+	if {_stage} is "NOT_STARTED":
+		storyQueueDialogue({_p}, "Luna", "Ugh... dingin sekali angin malam di lembah ini menusuk tulang. Aku sampai harus merapatkan mantel berkali-kali.", "minecraft:entity.villager.ambient", 1.0, "biasa")
+		storyQueueDialogue({_p}, "Luna", "Eh! Astaga kaget aku... Suara langkahmu nyaris tak terdengar!", "minecraft:entity.villager.ambient", 1.3, "unique")
+		storyQueueDialogue({_p}, "Luna", "Kupikir ada mayat hidup yang merangkak keluar dari sumur tua itu...", "minecraft:entity.villager.ambient", 0.9, "sedih")
+		storyQueueDialogue({_p}, "Luna", "Perkenalkan, namaku Luna. Aku seorang penjelajah botani independen.", "minecraft:entity.villager.ambient", 1.0, "biasa")
+		storyQueueDialogue({_p}, "Luna", "Baru saja tiba menjelang senja tadi di lembah terlupakan ini.", "minecraft:entity.villager.ambient", 1.0, "biasa")
+		storyQueueDialogue({_p}, "Luna", "Rencananya aku hanya ingin mendirikan tenda kecil untuk melepas lelah semalam sebelum melanjutkan ekspedisi.", "minecraft:entity.villager.ambient", 1.0, "bahagia")
+		storyQueueDialogue({_p}, "Luna", "Tapi tempat ini menyimpan hawa janggal... Tanah di sekitar sumur seolah berbisik memanggil nama asing.", "minecraft:entity.villager.ambient", 0.9, "unique")
+		storyStartDialogueQueue({_p}, "CALLBACK_LUNA_INTRO", {_loc})
+		
+	else if {_stage} is "Q1_ACTIVE":
+		set {_wCount} to countVanillaItem({_p}, wheat)
+		if {_wCount} >= 10:
+			storyQueueDialogue({_p}, "Luna", "Wah, kamu sudah kembali! Harum gandum segar tercium dari tasmu.", "minecraft:entity.villager.ambient", 1.2, "bahagia")
+			storyStartDialogueQueue({_p}, "CALLBACK_LUNA_Q1_TURNIN", {_loc})
+		else:
+			storyQueueDialogue({_p}, "Luna", "Sudah dapat gandumnya? Perutku mulai berbunyi dari tadi, haha...", "minecraft:entity.villager.ambient", 1.0, "biasa")
+			storyQueueDialogue({_p}, "Luna", "Kumpulkan 10 Wheat segar dari ladang ya. Kamu baru punya %{_wCount}%/10.", "minecraft:entity.villager.ambient", 0.9, "sedih")
+			storyStartDialogueQueue({_p}, "", {_loc})
+			
+	else if {_stage} is "Q2_ACTIVE":
+		set {_aCount} to countVanillaItem({_p}, apple)
+		if {_aCount} >= 5:
+			storyQueueDialogue({_p}, "Luna", "Aroma apel manis! Kelihatannya kamu berhasil memetik buah terbaik.", "minecraft:entity.villager.ambient", 1.2, "bahagia")
+			storyStartDialogueQueue({_p}, "CALLBACK_LUNA_Q2_TURNIN", {_loc})
+		else:
+			storyQueueDialogue({_p}, "Luna", "Belum ketemu pohon apelnya? Ada di tebing sebelah barat desa.", "minecraft:entity.villager.ambient", 1.0, "biasa")
+			storyQueueDialogue({_p}, "Luna", "Petik 5 Apple ranum ya. Kamu baru mengumpulkan %{_aCount}%/5.", "minecraft:entity.villager.ambient", 0.9, "sedih")
+			storyStartDialogueQueue({_p}, "", {_loc})
+			
+	else if {_stage} is "Q3_INVESTIGATE":
+		storyQueueDialogue({_p}, "Luna", "Berhati-hatilah di sekitar Sumur Tua itu.", "minecraft:entity.villager.ambient", 0.9, "sedih")
+		storyQueueDialogue({_p}, "Luna", "Hawa dingin di sana tidak wajar. Segera mundur jika ada hal yang mengancam!", "minecraft:block.note_block.bell", 0.8, "unique")
+		storyStartDialogueQueue({_p}, "", {_loc})
+
+function handleLunaSecretMemory(p: player, loc: location):
+	set {_uuid} to uuid of {_p}
+	storyClearDialogueQueue({_p})
+	storyQueueDialogue({_p}, "Luna", "Tunggu... aroma sayuran itu... Fresh Cabbage?", "minecraft:entity.villager.ambient", 1.2, "unique")
+	storyQueueDialogue({_p}, "Luna", "Kepalaku mendadak berdenyut... Ada sebuah foto tua... 'Piece of Photo'...", "minecraft:block.sculk_sensor.clicking", 0.7, "sedih")
+	storyQueueDialogue({_p}, "Luna", "Aku pernah mendengarnya dari Bob si Petani. Coba temui dia!", "minecraft:entity.villager.ambient", 1.0, "bahagia")
+	storyStartDialogueQueue({_p}, "", {_loc})
+
+# ==============================================================================
+#                  10. DAILY QUEST ENGINE (3 QUEST SEKALIGUS & RESET 00:00 WIB)
+# ==============================================================================
+
+function checkDailyReset(p: player):
+	set {_uuid} to uuid of {_p}
+	set {_today} to now formatted as "yyyy-MM-dd"
+	if {story::daily::%{_uuid}%::date} is not {_today}:
+		set {story::daily::%{_uuid}%::date} to {_today}
+		clear {story::daily::%{_uuid}%::completed::*}
+		set {story::daily::%{_uuid}%::t3_kills} to 0
+
+function handleLunaDailyMenu(p: player, loc: location):
+	set {_uuid} to uuid of {_p}
+	checkDailyReset({_p})
+	
+	set {_hearts} to getLunaHearts({_p})
+	storyClearDialogueQueue({_p})
+	
+	if {_hearts} < 3:
+		storyQueueDialogue({_p}, "Luna", "Pagi! Istirahatmu nyenyak semalam?", "minecraft:entity.villager.ambient", 1.0)
+		storyQueueDialogue({_p}, "Luna", "Hari ini ada perbekalan desa yang perlu dirapikan. Maukah kamu membantu?", "minecraft:entity.villager.ambient", 1.1)
+	else:
+		storyQueueDialogue({_p}, "Luna", "Hei! Pas sekali kamu datang. Aku baru menyeduh teh daun min.", "minecraft:entity.villager.ambient", 1.2)
+		storyQueueDialogue({_p}, "Luna", "Bantu aku bereskan papan tugas harian ini ya, nanti kita bagi hasilnya!", "minecraft:entity.villager.ambient", 1.2)
+		
+	storyStartDialogueQueue({_p}, "CALLBACK_OPEN_DAILY_GUI", {_loc})
+
+function openDailyQuestGUI(p: player):
+	set {_uuid} to uuid of {_p}
+	checkDailyReset({_p})
+	
+	set {_gui} to a new chest inventory with 3 rows named "&8[&6Luna's Daily Board&8]"
+	
+	# Slot 11: Tier 1 (Easy - Valley Harvest)
+	if {story::daily::%{_uuid}%::completed::tier1} is true:
+		set slot 11 of {_gui} to barrier named "&a&lTier 1: Valley Harvest &7[COMPLETED]" with lore "&7Tugas harian ini sudah selesai hari ini."
+	else:
+		set slot 11 of {_gui} to carrot named "&a&lTier 1: Valley Harvest" with lore "&7Kumpulkan &f16 Carrots &7untuk persediaan dapur.", "", "&eHadiah:", "&f- 3x &c&lRuby", "&f- 50 Experience", "&f- +1 Friendship Heart", "" and "&aKlik untuk serahkan!"
+		
+	# Slot 13: Tier 2 (Medium - Valley Provisions)
+	if {story::daily::%{_uuid}%::completed::tier2} is true:
+		set slot 13 of {_gui} to barrier named "&e&lTier 2: Valley Provisions &7[COMPLETED]" with lore "&7Tugas harian ini sudah selesai hari ini."
+	else:
+		set slot 13 of {_gui} to leather named "&e&lTier 2: Valley Provisions" with lore "&7Kumpulkan &f8 Leather &7untuk perbaikan tenda.", "", "&eHadiah:", "&f- 6x &c&lRuby", "&f- 100 Experience", "&f- +2 Friendship Hearts", "" and "&aKlik untuk serahkan!"
+		
+	# Slot 15: Tier 3 (Hard - Ridge Patrol)
+	set {_kills} to {story::daily::%{_uuid}%::t3_kills} ? 0
+	if {story::daily::%{_uuid}%::completed::tier3} is true:
+		set slot 15 of {_gui} to barrier named "&c&lTier 3: Ridge Patrol &7[COMPLETED]" with lore "&7Tugas harian ini sudah selesai hari ini."
+	else:
+		set slot 15 of {_gui} to iron sword named "&c&lTier 3: Ridge Patrol" with lore "&7Basmi monster malam di sekitar bukit.", "&7Progres: &e%{_kills}%/8 Skeletons", "", "&eHadiah:", "&f- 10x &c&lRuby", "&f- 200 Experience", "&f- +3 Friendship Hearts", "" and "&aKlik untuk serahkan (jika target terpenuhi)!"
+		
+	open {_gui} to {_p}
+
+on inventory click:
+	if name of event-inventory is "&8[&6Luna's Daily Board&8]":
+		cancel event
+		set {_uuid} to uuid of player
+		set {_slot} to index of event-slot
+		
+		# TIER 1 SUBMIT
+		if {_slot} is 11:
+			if {story::daily::%{_uuid}%::completed::tier1} is true:
+				send "{@prefix} &cTugas Tier 1 sudah selesai hari ini!" to player
+				stop
+			if countVanillaItem(player, carrot) >= 16:
+				removeVanillaItem(player, carrot, 16)
+				set {story::daily::%{_uuid}%::completed::tier1} to true
+				give 1 of getStoryItem("ruby", 3) to player
+				add 50 to player's experience
+				addLunaHearts(player, 1)
+				close player's inventory
+				send "{@prefix} &a&lSUKSES! &fTugas Tier 1 selesai. Menerima &c3 Ruby &fdan &e50 EXP&f." to player
+			else:
+				send "{@prefix} &cKamu membutuhkan 16 Carrots di inventori!" to player
+				
+		# TIER 2 SUBMIT
+		else if {_slot} is 13:
+			if {story::daily::%{_uuid}%::completed::tier2} is true:
+				send "{@prefix} &cTugas Tier 2 sudah selesai hari ini!" to player
+				stop
+			if countVanillaItem(player, leather) >= 8:
+				removeVanillaItem(player, leather, 8)
+				set {story::daily::%{_uuid}%::completed::tier2} to true
+				give 1 of getStoryItem("ruby", 6) to player
+				add 100 to player's experience
+				addLunaHearts(player, 2)
+				close player's inventory
+				send "{@prefix} &a&lSUKSES! &fTugas Tier 2 selesai. Menerima &c6 Ruby &fdan &e100 EXP&f." to player
+			else:
+				send "{@prefix} &cKamu membutuhkan 8 Leather di inventori!" to player
+				
+		# TIER 3 SUBMIT
+		else if {_slot} is 15:
+			if {story::daily::%{_uuid}%::completed::tier3} is true:
+				send "{@prefix} &cTugas Tier 3 sudah selesai hari ini!" to player
+				stop
+			set {_kills} to {story::daily::%{_uuid}%::t3_kills} ? 0
+			if {_kills} >= 8:
+				set {story::daily::%{_uuid}%::completed::tier3} to true
+				give 1 of getStoryItem("ruby", 10) to player
+				add 200 to player's experience
+				addLunaHearts(player, 3)
+				close player's inventory
+				send "{@prefix} &a&lSUKSES! &fTugas Tier 3 selesai. Menerima &c10 Ruby &fdan &e200 EXP&f." to player
+			else:
+				send "{@prefix} &cKamu baru membasmi %{_kills}%/8 Skeletons!" to player
+
+# Tracker Pembunuhan Skeleton untuk Daily Quest Tier 3
+on death of skeleton:
+	if attacker is a player:
+		set {_uuid} to uuid of attacker
+		checkDailyReset(attacker)
+		if {story::daily::%{_uuid}%::completed::tier3} is not true:
+			add 1 to {story::daily::%{_uuid}%::t3_kills}
+			set {_k} to {story::daily::%{_uuid}%::t3_kills}
+			if {_k} <= 8:
+				send action bar "&c[Daily Quest] &fRidge Patrol: &e%{_k}%/8 Skeletons" to attacker
+				play sound "minecraft:entity.experience_orb.pickup" with volume 0.5 and pitch 1.5 to attacker
+
+# ==============================================================================
+#                  11. EXTENSION CALLBACK DIALOG & PILIHAN
+# ==============================================================================
+
+function vnTriggerCallback(p: player, callbackId: text):
+	if {_callbackId} is "CALLBACK_TESTER_CALIBRATION":
+		showStoryChoice({_p}, "CHOICE_CALIBRATION", "Keren, Sudah Pas!", "ALIGNED", "Coba Lagi", "RECALIBRATE")
+	else if {_callbackId} is "CALLBACK_LUNA_INTRO":
+		showStoryChoice({_p}, "CHOICE_LUNA_INTRO", "Temani Minum", "DRINK", "Papan Tugas Harian", "DAILY")
+	else if {_callbackId} is "CALLBACK_LUNA_MENU":
+		showStoryChoice({_p}, "CHOICE_LUNA_MENU", "Papan Tugas Harian", "DAILY", "Ngobrol Santai", "CHAT")
+	else if {_callbackId} is "CALLBACK_LUNA_Q1_TURNIN":
+		showStoryChoice({_p}, "CHOICE_LUNA_Q1", "Serahkan 10 Wheat", "SUBMIT", "Nanti Dulu", "CANCEL")
+	else if {_callbackId} is "CALLBACK_LUNA_Q2_TURNIN":
+		showStoryChoice({_p}, "CHOICE_LUNA_Q2", "Serahkan 5 Apples", "SUBMIT", "Nanti Dulu", "CANCEL")
+	else if {_callbackId} is "CALLBACK_OPEN_DAILY_GUI":
+		openDailyQuestGUI({_p})
+	else if {_callbackId} is "CALLBACK_OPEN_QUEST_GUI":
+		openQuestGUI({_p})
+
+function vnTriggerChoiceCallback(p: player, choiceId: text, action: text):
+	set {_uuid} to uuid of {_p}
+	if {_choiceId} is "CHOICE_CALIBRATION":
+		if {_action} is "ALIGNED":
+			storyClearDialogueQueue({_p})
+			storyQueueDialogue({_p}, "Tester VN", "Luar biasa! Kotak dialog sekarang 100 persen stabil dan tidak goyang.", "minecraft:entity.villager.yes", 1.2)
+			storyStartDialogueSimple({_p})
+		else:
+			storyClearDialogueQueue({_p})
+			storyQueueDialogue({_p}, "Tester VN", "Siap! Kamu bisa mencoba dialog lagi kapan pun melalui /vn test.", "minecraft:entity.villager.no", 0.9)
+			storyStartDialogueSimple({_p})
+			
+	else if {_choiceId} is "CHOICE_LUNA_INTRO":
+		set {story::luna::%{_uuid}%::stage} to "INTRODUCED"
+		storyClearDialogueQueue({_p})
+		if {_action} is "DAILY":
+			openQuestGUI({_p})
+		else:
+			storyQueueDialogue({_p}, "Luna", "Haha, bersulang! Senang punya teman ngobrol di tempat baru ini.", "minecraft:entity.villager.ambient", 1.2, "bahagia")
+			storyStartDialogueSimple({_p})
+
+	else if {_choiceId} is "CHOICE_LUNA_MENU":
+		storyClearDialogueQueue({_p})
+		if {_action} is "DAILY":
+			openQuestGUI({_p})
+		else:
+			storyQueueDialogue({_p}, "Luna", "Suasana tavern hari ini tenang ya. Kalau lelah istirahatlah sejenak!", "minecraft:entity.villager.ambient", 1.1, "bahagia")
+			storyStartDialogueSimple({_p})
+		
+	else if {_choiceId} is "CHOICE_LUNA_Q1":
+		if {_action} is "SUBMIT":
+			if removeVanillaItem({_p}, wheat, 10) is true:
+				set {story::ch1::%{_uuid}%::stage} to "Q2_ACTIVE"
+				give 1 of getStoryItem("ruby", 5) to {_p}
+				add 100 to {_p}'s experience
+				addLunaHearts({_p}, 1)
+				storyClearDialogueQueue({_p})
+				storyQueueDialogue({_p}, "Luna", "Wah, aromanya harum! Gandumnya padat dan kering.", "minecraft:entity.villager.yes", 1.2, "bahagia")
+				storyQueueDialogue({_p}, "Luna", "Ini 5 Ruby untukmu. Selanjutnya, bisakah kamu petikkan 5 Apple ranum di tebing barat?", "minecraft:entity.villager.ambient", 1.0, "biasa")
+				storyStartDialogueSimple({_p})
+			else:
+				send "{@prefix} &cGandum di tasmu kurang dari 10!" to {_p}
+				
+	else if {_choiceId} is "CHOICE_LUNA_Q2":
+		if {_action} is "SUBMIT":
+			if removeVanillaItem({_p}, apple, 5) is true:
+				set {story::ch1::%{_uuid}%::stage} to "Q3_INVESTIGATE"
+				give 1 of getStoryItem("ruby", 5) to {_p}
+				add 150 to {_p}'s experience
+				addLunaHearts({_p}, 1)
+				storyClearDialogueQueue({_p})
+				storyQueueDialogue({_p}, "Luna", "Segar sekali! Krauk... manisnya pas!", "minecraft:entity.player.levelup", 1.3, "bahagia")
+				storyQueueDialogue({_p}, "Luna", "Sebenarnya... tadi warga sepuh panik dari arah Sumur Tua di ujung timur.", "minecraft:block.sculk_sensor.clicking", 0.8, "sedih")
+				storyQueueDialogue({_p}, "Luna", "Katanya airnya membeku hitam dan tanah bergetar. Tolong selidiki area sumur itu!", "minecraft:block.note_block.bell", 0.9, "unique")
+				storyStartDialogueSimple({_p})
+			else:
+				send "{@prefix} &cApel di tasmu kurang dari 5!" to {_p}
+
+on right click on villager:
+	set {_uuid} to uuid of player
+	
+	# Jika sedang berada di dalam dialog: JANGAN BUKA / SPAM DIALOG BARU
+	if {story::dialogue::%{_uuid}%::active} is true:
+		cancel event
+		set {_tool} to tool of player
+		set {_hasQuestItem} to false
+		if custom model data of {_tool} is 78311:
+			set {_hasQuestItem} to true
+		else if uncolored name of {_tool} contains "Cabbage" or "Kubis":
+			set {_hasQuestItem} to true
+		else if {_tool} is apple or carrot:
+			set {_hasQuestItem} to true
+			
+		if {_hasQuestItem} is true:
+			questHandleLunaInteract(player, location of target entity)
+		stop
+		
+	# Cegah interaksi instan jika dialog baru saja selesai (Debounce 1.5 detik)
+	set {_waitedFin} to difference between {story::dialogue_finish_cooldown::%{_uuid}%} and now
+	if {_waitedFin} is less than 1.5 seconds:
+		cancel event
+		stop
+		
+	if name of target entity contains "Tester" or "Tester VN":
+		cancel event
+		set {_waited} to difference between {story::cooldown::%{_uuid}%} and now
+		if {_waited} is less than 5 ticks:
+			stop
+		set {story::cooldown::%{_uuid}%} to now
+		handleTesterVN(player, location of target entity)
+	else:
+		# Route dinamis ke Story Studio compiler (Bob, Luna, dll)
+		set {_npcRaw} to uncolored name of target entity
+		if {_npcRaw} contains "Luna":
+			cancel event
+			set {_waited} to difference between {story::cooldown::%{_uuid}%} and now
+			if {_waited} is less than 5 ticks:
+				stop
+			set {story::cooldown::%{_uuid}%} to now
+			
+			# Prioritas 1: Jika belum kenalan, jalankan intro dialogue
+			set {_lunaStage} to {story::luna::%{_uuid}%::stage} ? "NOT_STARTED"
+			if {_lunaStage} is "NOT_STARTED":
+				storyRouteNpcDialogue(player, "Luna", location of target entity)
+			else:
+				if questHandleLunaInteract(player, location of target entity) is not true:
+					storyRouteNpcDialogue(player, "Luna", location of target entity)
+		else if {_npcRaw} contains "Bob":
+			cancel event
+			set {_waited} to difference between {story::cooldown::%{_uuid}%} and now
+			if {_waited} is less than 5 ticks:
+				stop
+			set {story::cooldown::%{_uuid}%} to now
+			storyRouteNpcDialogue(player, "Bob", location of target entity)

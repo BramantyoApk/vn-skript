@@ -1,0 +1,108 @@
+# ==============================================================================
+#                      VISUAL NOVEL CUTSCENE & CAMERA SETUP
+#   /vn cutscene set <npc> <tipe> <step> <sit|stand>
+# ==============================================================================
+
+options:
+	prefix: &8[&6Cutscene&8]&r
+
+command /cutscene [<text>] [<text>] [<text>] [<text>] [<text>]:
+	permission: aethir.story.admin
+	permission message: &cKamu tidak memiliki izin untuk perintah ini!
+	trigger:
+		set {_cmd} to arg-1 ? "help"
+		
+		if {_cmd} is "help":
+			send "" to player
+			send "{@prefix} &e&lPANDUAN CUTSCENE & POSE NPC:" to player
+			send "&6/cutscene set <npc> <tipe> <step> <pose> &7- Rekam koordinat, pandangan & pose" to player
+			send "&6/cutscene play <npc> <tipe> <step> &7- Terapkan posisi & pose NPC yang direkam" to player
+			send "&6/cutscene list <npc> <tipe> &7- Lihat step cutscene yang tersimpan" to player
+			send "&6/cutscene delete <npc> <tipe> <step> &7- Hapus data step cutscene" to player
+			send "" to player
+			stop
+			
+		else if {_cmd} is "set":
+			set {_npc} to arg-2
+			set {_type} to arg-3
+			set {_step} to arg-4
+			set {_pose} to arg-5 ? "stand"
+			
+			if {_npc} is not set:
+				send "{@prefix} &cGunakan: /cutscene set <npc> <tipe> <step> <sit|stand|crouch|sleep>" to player
+				stop
+			if {_type} is not set:
+				send "{@prefix} &cGunakan: /cutscene set <npc> <tipe> <step> <sit|stand|crouch|sleep>" to player
+				stop
+			if {_step} is not set:
+				send "{@prefix} &cGunakan: /cutscene set <npc> <tipe> <step> <sit|stand|crouch|sleep>" to player
+				stop
+				
+			set {_loc} to location of player
+			set {cutscene::%{_npc}%::%{_type}%::%{_step}%::loc} to {_loc}
+			set {cutscene::%{_npc}%::%{_type}%::%{_step}%::pose} to {_pose}
+			
+			# Terapkan langsung ke FancyNpcs jika NPC ada di sekitar
+			applyNpcCutscenePose({_npc}, {_loc}, {_pose})
+			
+			send "{@prefix} &aBerhasil merekam Cutscene untuk &d%{_npc}%&a:" to player
+			send "{@prefix} &7- Tipe: &e%{_type}% &7| Step: &b%{_step}%" to player
+			send "{@prefix} &7- Posisi: &f%x-coord of {_loc}%, %y-coord of {_loc}%, %z-coord of {_loc}%" to player
+			send "{@prefix} &7- Pandangan (Yaw/Pitch): &f%yaw of {_loc}% / %pitch of {_loc}%" to player
+			send "{@prefix} &7- Pose: &e%{_pose}%" to player
+			play sound "minecraft:entity.experience_orb.pickup" with volume 1.0 and pitch 1.4 to player
+			
+		else if {_cmd} is "play":
+			set {_npc} to arg-2
+			set {_type} to arg-3
+			set {_step} to arg-4
+			
+			if {cutscene::%{_npc}%::%{_type}%::%{_step}%::loc} is not set:
+				send "{@prefix} &cData cutscene untuk step tersebut tidak ditemukan!" to player
+				stop
+				
+			set {_loc} to {cutscene::%{_npc}%::%{_type}%::%{_step}%::loc}
+			set {_pose} to {cutscene::%{_npc}%::%{_type}%::%{_step}%::pose} ? "stand"
+			applyNpcCutscenePose({_npc}, {_loc}, {_pose})
+			send "{@prefix} &aMenerapkan cutscene &d%{_npc}% &f[%{_type}% - Step %{_step}%]&a." to player
+			
+		else if {_cmd} is "delete":
+			set {_npc} to arg-2
+			set {_type} to arg-3
+			set {_step} to arg-4
+			delete {cutscene::%{_npc}%::%{_type}%::%{_step}%::*}
+			send "{@prefix} &eData cutscene &d%{_npc}% &f[%{_type}% - Step %{_step}%] &adilepas/dihapus." to player
+
+on tab complete of "/cutscene":
+	if tab arg-1 is not set:
+		set tab completions for position 1 to "set", "play", "delete", "list" and "help"
+	else if tab arg-1 is "set" or "play" or "delete":
+		set tab completions for position 2 to "luna", "bob" and "tester"
+		set tab completions for position 3 to "intro", "ch1", "idle" and "tavern"
+		set tab completions for position 4 to "1", "2", "3", "4" and "5"
+		if tab arg-1 is "set":
+			set tab completions for position 5 to "stand", "sit", "crouch" and "sleep"
+
+function applyNpcCutscenePose(npc: text, loc: location, pose: text):
+	set {_cleanNpc} to "Luna"
+	if {_npc} contains "bob" or "Bob":
+		set {_cleanNpc} to "BOB"
+	
+	set {_x} to x-coord of {_loc}
+	set {_y} to y-coord of {_loc}
+	set {_z} to z-coord of {_loc}
+	set {_yaw} to yaw of {_loc}
+	set {_pitch} to pitch of {_loc}
+	set {_w} to name of world of {_loc}
+	
+	# Pindahkan NPC & atur rotasi
+	execute console command "npc teleport %{_cleanNpc}% --location %{_x}% %{_y}% %{_z}% --world %{_w}%"
+	execute console command "npc turn_to_player %{_cleanNpc}% false"
+	
+	# Atur pose
+	if {_pose} is "sit" or "sitting" or "duduk":
+		execute console command "npc attribute %{_cleanNpc}% pose sitting"
+	else if {_pose} is "crouch" or "crouching" or "jongkok":
+		execute console command "npc attribute %{_cleanNpc}% pose crouching"
+	else:
+		execute console command "npc attribute %{_cleanNpc}% pose standing"

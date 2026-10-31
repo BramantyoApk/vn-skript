@@ -1,0 +1,11 @@
+id: "luna_q3_investigate"
+character: "luna"
+trigger:
+  type: "fancynpc"
+  stage_required: "Q3_INVESTIGATE"
+lines:
+  - emotion: "sedih"
+    text: "Berhati-hatilah di sekitar Sumur Tua itu."
+  - emotion: "unique"
+    text: "Hawa dingin di sana tidak wajar. Segera mundur jika ada hal yang mengancam!"
+callback: ""

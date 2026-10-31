@@ -1,0 +1,15 @@
+id: "bob_intro"
+character: "bob"
+trigger:
+  type: "fancynpc"
+  stage_required: "NOT_STARTED"
+lines:
+  - emotion: "biasa"
+    text: "Halo petualang! Selamat datang di ladang gandum timur."
+  - emotion: "bahagia"
+    text: "Matahari hari ini cerah sekali, panen kali ini pasti melimpah!"
+  - emotion: "sedih"
+    text: "Hanya saja beberapa gagak nakal dari arah sumur tua suka mencuri benih..."
+  - emotion: "unique"
+    text: "Kalau kamu sempat ke sana, hati-hati ya, hawanya agak aneh akhir-akhir ini."
+callback: "CALLBACK_BOB_INTRO"

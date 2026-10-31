@@ -1,0 +1,245 @@
+dialog_layout:
+  align: left
+  offset: left
+  images:
+    1:
+      name: dialog_box
+      x: 75
+      y: -4
+      scale: 1.0
+      layer: 2
+    2:
+      name: portrait_bob_biasa
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''biasa'''
+          operation: ==
+    3:
+      name: portrait_bob_bahagia
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''bahagia'''
+          operation: ==
+    4:
+      name: portrait_bob_marah
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''marah'''
+          operation: ==
+    5:
+      name: portrait_bob_sedih
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''sedih'''
+          operation: ==
+    6:
+      name: portrait_bob_unique
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''unique'''
+          operation: ==
+    7:
+      name: portrait_bob_unique
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Bob'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''kustom'''
+          operation: ==
+    8:
+      name: portrait_luna_biasa
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''biasa'''
+          operation: ==
+    9:
+      name: portrait_luna_bahagia
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''bahagia'''
+          operation: ==
+    10:
+      name: portrait_luna_marah
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''marah'''
+          operation: ==
+    11:
+      name: portrait_luna_sedih
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''sedih'''
+          operation: ==
+    12:
+      name: portrait_luna_unique
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''unique'''
+          operation: ==
+    13:
+      name: portrait_luna_unique
+      x: -14
+      y: -58
+      scale: 0.78
+      layer: 2
+      conditions:
+        1:
+          first: custom_variable:skript_1
+          second: '''Luna'''
+          operation: ==
+        2:
+          first: custom_variable:skript_4
+          second: '''kustom'''
+          operation: ==
+    14:
+      name: nameplate
+      x: 4
+      y: 34
+      scale: 1.0
+      layer: 2
+    15:
+      name: bottom_cinematic_fade
+      x: -82
+      y: -75
+      scale: 1.0
+      layer: 1
+  texts:
+    1:
+      name: dialog_font
+      pattern: <#1A1510>[custom_variable:skript_1]
+      x: 12
+      y: 41
+      align: left
+      scale: 0.55
+      layer: 3
+    2:
+      name: dialog_font
+      pattern: <#FFE27A>[custom_variable:skript_1]
+      x: 11
+      y: 40
+      align: left
+      scale: 0.55
+      layer: 4
+    3:
+      name: dialog_font
+      pattern: <#151515>[custom_variable:skript_2]
+      x: 81
+      y: 2
+      align: left
+      scale: 0.5
+      space: 0
+      line: 4
+      split-width: 210
+      line-width: 10
+      force-split: false
+      layer: 3
+    4:
+      name: dialog_font
+      pattern: <#F0F0F0>[custom_variable:skript_2]
+      x: 80
+      y: 1
+      align: left
+      scale: 0.5
+      space: 0
+      line: 4
+      split-width: 210
+      line-width: 10
+      force-split: false
+      layer: 4

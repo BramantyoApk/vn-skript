@@ -1,0 +1,72 @@
+elements:
+  dialog_box:
+    x: 50
+    y: -3
+    scale: 1.0
+    layer: 2
+  portrait:
+    x: -39
+    y: -57
+    scale: 0.78
+    base_size: 128
+    layer: 3
+  nameplate:
+    x: -21
+    y: 35
+    scale: 1.0
+    layer: 4
+  speaker_text:
+    x: -13
+    y: 41
+    scale: 0.52
+    color: <#FFFFFF>
+    space: 0
+    layer: 5
+    align: left
+    outline: true
+  dialog_text:
+    x: 55
+    y: 2
+    scale: 0.46
+    color: <#F0F0F0>
+    line: 4
+    split_width: 202
+    line_width: 9
+    space: 0
+    layer: 2
+    align: left
+    outline: true
+  bottom_cinematic_fade:
+    x: 0
+    y: -45
+    scale: 2.5
+    layer: 1
+groups:
+  Semua Elemen (All):
+  - portrait
+  - nameplate
+  - dialog_box
+  - speaker_text
+  - dialog_text
+  - bottom_cinematic_fade
+  Kotak Dialog & Teks:
+  - dialog_box
+  - dialog_text
+  Potret & Nama:
+  - portrait
+  - nameplate
+  - speaker_text
+  Semua Teks:
+  - speaker_text
+  - dialog_text
+textures:
+  dialog_box: dialogue_box.png
+  nameplate: nameplate.png
+custom_elements:
+  bottom_cinematic_fade:
+    type: image
+    x: 0
+    y: -45
+    scale: 2.5
+    layer: 1
+    file: textures/bottom_cinematic_fade.png

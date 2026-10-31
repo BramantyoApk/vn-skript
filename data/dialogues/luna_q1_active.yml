@@ -1,0 +1,11 @@
+id: "luna_q1_active"
+character: "luna"
+trigger:
+  type: "fancynpc"
+  stage_required: "Q1_ACTIVE"
+lines:
+  - emotion: "biasa"
+    text: "Sudah dapat gandumnya? Perutku mulai berbunyi dari tadi, haha..."
+  - emotion: "sedih"
+    text: "Kumpulkan 10 Wheat segar dari ladang ya. Nanti kita olah bersama!"
+callback: ""

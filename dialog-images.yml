@@ -1,0 +1,39 @@
+dialog_box:
+  type: single
+  file: dialog/dialogue_box.png
+bottom_cinematic_fade:
+  type: single
+  file: dialog/bottom_cinematic_fade.png
+nameplate:
+  type: single
+  file: dialog/nameplate.png
+portrait_bob_biasa:
+  type: single
+  file: dialog/portrait_bob_biasa.png
+portrait_bob_bahagia:
+  type: single
+  file: dialog/portrait_bob_bahagia.png
+portrait_bob_marah:
+  type: single
+  file: dialog/portrait_bob_marah.png
+portrait_bob_sedih:
+  type: single
+  file: dialog/portrait_bob_sedih.png
+portrait_bob_unique:
+  type: single
+  file: dialog/portrait_bob_unique.png
+portrait_luna_biasa:
+  type: single
+  file: dialog/portrait_luna_biasa.png
+portrait_luna_bahagia:
+  type: single
+  file: dialog/portrait_luna_bahagia.png
+portrait_luna_marah:
+  type: single
+  file: dialog/portrait_luna_marah.png
+portrait_luna_sedih:
+  type: single
+  file: dialog/portrait_luna_sedih.png
+portrait_luna_unique:
+  type: single
+  file: dialog/portrait_luna_unique.png
