@@ -211,5 +211,41 @@ Bila membuka sesi baru, gunakan urutan verifikasi berikut:
    - Hubungkan portrait relatif ke sisi kiri kotak dialog: $X_{\text{portrait}} = X_{\text{box}} - \text{margin}$.
 2. Verifikasi font provider `dialog_font` dan mapping variabel `skript_1` (speaker) serta `skript_2` (pesan) agar teks langsung terlihat di layer atas kotak.
 
+---
+
+## 9. Laporan Hasil Uji Pemisahan & Anomali In-Game (`bc7242f` & `3a4f56e`)
+
+### A. Ringkasan Pengujian di Server Windows & Client 26.2
+- **Commit yang Diuji**: `bc7242f` (perubahan `layout_offset: center` dan `pixel.x: 0`) dan `3a4f56e` (uji isolasi `speaker_text`, disable `dialog_text`).
+- **Langkah Eksekusi**:
+  1. `git pull` -> ditarik commit `bc7242f`.
+  2. `python tools/compiler.py` dijalankan di server Windows.
+  3. Reload Skript & BetterHud via `/vn reloadhud`.
+  4. Reload resource pack di client Minecraft (F3+T).
+  5. Pengujian dialog via `/vn testdialog` pada player `Bramanzero`.
+
+### B. Temuan Masalah Baru di In-Game
+1. **Kotak Dialog Terlempar ke Sudut Paling Kiri Bawah**:
+   - Kotak dialog (`dialogue_box.png`) kini berpindah dari yang sebelumnya di pojok kanan bawah menjadi **terjepit di sudut paling kiri bawah layar** (`X ≈ 0, Y ≈ bottom`), dengan sisi kiri kotak terpotong oleh tepi layar.
+   - Potret karakter dan nameplate tidak terlihat sama sekali (terlempar keluar batas kiri layar / off-screen karena koordinat negatif relatif terhadap origin kiri).
+   - **Penyebab**: Perubahan `layout_offset: center` dengan `pixel.x: 0` pada container dengan `align: left` di Minecraft 26.2 menyebabkan titik acuan kontainer jatuh tepat di tepi kiri GUI (`0.5 * ui.x` shader offset tidak mengompensasi perataan kontainer saat `align: left`).
+
+2. **Karakter Tofu Tetap Muncul Meski `dialog_text` Dimatikan (`enabled: false`)**:
+   - Pada commit `3a4f56e`, `dialog_text` dinonaktifkan (`enabled: false`), `line: 1`, dan `split_width` dihilangkan sepenuhnya dari `vn-dialog-layout.yml`. Hanya `speaker_text` (`[custom_variable:skript_1]`) yang aktif di dalam layout.
+   - **Hasil**: Karakter tofu tetap muncul di pojok kiri bawah kotak dialog berupa dua simbol pengganti (`[≡] [▶]`).
+   - **Analisis**:
+     - Tofu **bukan** disebabkan oleh multiline text splitting (`split-width` / `line-width`), karena `dialog_text` sudah di-strip total dari file layout.
+     - Karakter tofu tersebut berasal dari:
+       1. Glyphs `speaker_text` (`Luna`) pada font `betterhud:popup_vn_dialog_text_2_1_1` yang gagal dipetakan oleh client (client log mencatat `[WARN]: Resource pack file/BetterHud_Pack.zip is not compatible with font atlas resizing. Temporarily disabling font atlas resizing`).
+       2. Atau karakter PUA (`\U000ce00*`) dari image provider (`portrait` / `nameplate`) yang gagal melewati kondisi Skript (`skript_1 == 'Bob'`, dll.) sehingga BossBar tetap mengirimkan spasi/karakter fallback yang tidak ter-offset oleh shader.
+
+### C. Panduan Fix untuk Lingkungan Linux
+1. **Perbaikan Koordinat / Centering**:
+   - Kembalikan anchoring popup layout agar kotak dialog berada di tengah layar secara visual. Bila menggunakan `offset: center`, periksa lebar kontainer `LayoutComponentContainer` agar tidak menarik layout ke sudut kiri `0`.
+2. **Debug Font vs Image PUA**:
+   - Lakukan tes layout tanpa elemen `texts` sama sekali (`texts: {}`) untuk memastikan apakah kedua tofu tersebut berasal dari teks atau dari karakter bitmap image yang gagal evaluasi kondisi.
+   - Periksa kompatibilitas shader `text.vsh` / `rendertype_text.vsh` terhadap format atlas font di Minecraft 26.2 (terkait warning atlas resizing).
+
+
 
 
