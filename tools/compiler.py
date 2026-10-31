@@ -166,6 +166,7 @@ def save_hud_config(config):
     with open(HUD_CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
+DIALOG_BASELINE_Y = -78
 FADE_SIZE = (480, 80)
 FADE_MAX_ALPHA = 220
 FADE_MAX_GLYPH_HEIGHT = 170
@@ -529,9 +530,11 @@ def compile_portraits_and_betterhud(characters):
                 }
                 text_counter += 1
 
-    # `offset: center` shifts the whole container by -(widest element extent)/2, which moves with every
-    # element/text width. `offset: left` pins the container's left edge to the popup anchor, so we centre
-    # the dialog_box ourselves via popup pixel.x (set `layout_offset: center` in hud_config to revert).
+    # `offset: center` shifts the container by a width that depends on the widest element, which is what
+    # moved the box/portrait/text around. `offset: left` pins the container's left edge to the popup anchor,
+    # so we reproduce Story Studio's origin ourselves:
+    #   base_origin_x = mid_x - int((box_w // 2) * box_scale)   (box_w = alpha-bbox width of dialog box)
+    # and every element is drawn at base_origin_x + x. Set `layout_offset: center` in hud_config to revert.
     layout_offset = raw_hud.get("layout_offset", "left")
     box_cfg = hud_cfg.get("dialog_box", {})
     box_w = 255
@@ -539,12 +542,13 @@ def compile_portraits_and_betterhud(characters):
         try:
             from PIL import Image
             with Image.open(dest_box) as im:
-                box_w = im.size[0]
+                bbox = im.convert("RGBA").getbbox()
+                box_w = (bbox[2] - bbox[0]) if bbox else im.size[0]
         except Exception:
             pass
     popup_pixel_x = 0
     if layout_offset == "left":
-        popup_pixel_x = -int(round(int(box_cfg.get("x", 0)) + box_w * float(box_cfg.get("scale", 1.0)) / 2))
+        popup_pixel_x = -int((box_w // 2) * float(box_cfg.get("scale", 1.0)))
 
     dialog_layout = {
         "vn_dialog_layout": {
@@ -578,7 +582,7 @@ def compile_portraits_and_betterhud(characters):
                 "images": {
                     1: {
                         "name": "bottom_cinematic_fade",
-                        "x": int(fade_cfg.get("x", 0)),
+                        "x": 0,
                         "y": 0,
                         "scale": fade_scale,
                         "layer": int(fade_cfg.get("layer", 1))
@@ -601,16 +605,17 @@ def compile_portraits_and_betterhud(characters):
             popup_layouts[layout_idx] = {
                 "name": "vn_fade_layout",
                 "gui": {"x": 50, "y": 100},
+                # Studio: fade top = baseline + y, where baseline == dialog layout pixel.y (-78)
                 "pixel": {
                     "x": int(fade_cfg.get("x", 0)),
-                    "y": int(fade_cfg.get("y", -45))
+                    "y": DIALOG_BASELINE_Y + int(fade_cfg.get("y", -45))
                 }
             }
             layout_idx += 1
         popup_layouts[layout_idx] = {
             "name": "vn_dialog_layout",
             "gui": {"x": 50, "y": 100},
-            "pixel": {"x": popup_pixel_x, "y": -78}
+            "pixel": {"x": popup_pixel_x, "y": DIALOG_BASELINE_Y}
         }
         popup_data = {
             "vn_dialog": {
