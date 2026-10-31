@@ -166,6 +166,30 @@ def save_hud_config(config):
     with open(HUD_CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
+FADE_SIZE = (480, 80)
+FADE_MAX_ALPHA = 220
+FADE_MAX_GLYPH_HEIGHT = 170
+
+def ensure_fade_texture(path):
+    """Regenerates the vertical black gradient if missing or oversized (huge glyphs break BossBar encoding)."""
+    from PIL import Image
+    if os.path.exists(path):
+        try:
+            with Image.open(path) as im:
+                if im.size == FADE_SIZE:
+                    return
+        except Exception:
+            pass
+    w, h = FADE_SIZE
+    im = Image.new("RGBA", FADE_SIZE, (0, 0, 0, 0))
+    px = im.load()
+    for y in range(h):
+        a = round(FADE_MAX_ALPHA * (y / (h - 1)) ** 1.2)
+        for x in range(w):
+            px[x, y] = (0, 0, 0, a)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    im.save(path)
+
 def compile_portraits_and_betterhud(characters):
     """
     1. Resizes all character emotion portraits into BetterHud assets.
@@ -197,6 +221,7 @@ def compile_portraits_and_betterhud(characters):
         shutil.copyfile(src_np, dest_np)
 
     src_fade = os.path.join(BASE_DIR, "textures", "bottom_cinematic_fade.png")
+    ensure_fade_texture(src_fade)
     dest_fade = os.path.join(BETTERHUD_ASSETS_DIR, "bottom_cinematic_fade.png")
     if os.path.exists(src_fade):
         os.makedirs(os.path.dirname(dest_fade), exist_ok=True)
@@ -234,11 +259,16 @@ def compile_portraits_and_betterhud(characters):
         bg_cfg = hud_cfg[fade_key]
         if bg_cfg.get("enabled", True):
             bg_layer = int(bg_cfg.get("layer", 1))
+            fade_scale = float(bg_cfg.get("scale", 2.0))
+            if FADE_SIZE[1] * fade_scale > FADE_MAX_GLYPH_HEIGHT:
+                print(f"[WARN] bottom_cinematic_fade scale {fade_scale} too large; clamped to "
+                      f"{FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]:.2f} (glyph height > {FADE_MAX_GLYPH_HEIGHT} breaks BossBar)")
+                fade_scale = FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]
             fade_item = {
                 "name": "bottom_cinematic_fade",
                 "x": int(bg_cfg.get("x", 0)),
                 "y": int(bg_cfg.get("y", -45)),
-                "scale": float(bg_cfg.get("scale", 2.5)),
+                "scale": fade_scale,
                 "layer": bg_layer
             }
             image_groups.append((bg_layer, [fade_item]))

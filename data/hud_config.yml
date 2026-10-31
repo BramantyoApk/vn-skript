@@ -39,7 +39,7 @@ elements:
   bottom_cinematic_fade:
     x: 0
     y: -45
-    scale: 2.5
+    scale: 2.0
     layer: 1
 groups:
   Semua Elemen (All):
