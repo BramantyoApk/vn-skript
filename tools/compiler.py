@@ -255,26 +255,6 @@ def compile_portraits_and_betterhud(characters):
 
     image_groups = []
 
-    # Include bottom_cinematic_fade in vn_dialog_layout (single layout pattern matching test_box)
-    fade_key = "bottom_cinematic_fade" if "bottom_cinematic_fade" in hud_cfg else "background_fade"
-    if fade_key in hud_cfg:
-        bg_cfg = hud_cfg[fade_key]
-        if bg_cfg.get("enabled", True):
-            bg_layer = int(bg_cfg.get("layer", 1))
-            fade_scale = float(bg_cfg.get("scale", 2.0))
-            if FADE_SIZE[1] * fade_scale > FADE_MAX_GLYPH_HEIGHT:
-                print(f"[WARN] bottom_cinematic_fade scale {fade_scale} too large; clamped to "
-                      f"{FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]:.2f} (glyph height > {FADE_MAX_GLYPH_HEIGHT} breaks BossBar)")
-                fade_scale = FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]
-            fade_item = {
-                "name": "bottom_cinematic_fade",
-                "x": int(bg_cfg.get("x", 0)),
-                "y": int(bg_cfg.get("y", -45)),
-                "scale": fade_scale,
-                "layer": bg_layer
-            }
-            image_groups.append((bg_layer, [fade_item]))
-
     if "dialog_box" in hud_cfg:
         box_cfg = hud_cfg["dialog_box"]
         b_layer = int(box_cfg.get("layer", DEFAULT_HUD_LAYERS["dialog_box"]))
@@ -330,12 +310,12 @@ def compile_portraits_and_betterhud(characters):
                     "conditions": {
                         1: {
                             "first": "custom_variable:skript_1",
-                            "second": speaker_name,
+                            "second": f"'{speaker_name}'",
                             "operation": "=="
                         },
                         2: {
                             "first": "custom_variable:skript_4",
-                            "second": em,
+                            "second": f"'{em}'",
                             "operation": "=="
                         }
                     }
@@ -353,12 +333,12 @@ def compile_portraits_and_betterhud(characters):
                         "conditions": {
                             1: {
                                 "first": "custom_variable:skript_1",
-                                "second": speaker_name,
+                                "second": f"'{speaker_name}'",
                                 "operation": "=="
                             },
                             2: {
                                 "first": "custom_variable:skript_4",
-                                "second": "kustom",
+                                "second": "'kustom'",
                                 "operation": "=="
                             }
                         }
@@ -581,21 +561,56 @@ def compile_portraits_and_betterhud(characters):
     with open(BETTERHUD_LAYOUT_FILE, "w", encoding="utf-8") as f:
         yaml.dump(dialog_layout, f, default_flow_style=False, sort_keys=False)
 
-    # Clean up redundant separate fade layout
+    # Generate independent fade layout when enabled, keeping vn_dialog_layout isolated
     fade_layout_file = os.path.join(BETTERHUD_DIR, "layouts", "vn-fade-layout.yml")
-    if os.path.exists(fade_layout_file):
+    fade_key = "bottom_cinematic_fade" if "bottom_cinematic_fade" in raw_hud.get("elements", {}) else "background_fade"
+    fade_cfg = raw_hud.get("elements", {}).get(fade_key, {})
+    fade_enabled = isinstance(fade_cfg, dict) and fade_cfg.get("enabled", True)
+
+    if fade_enabled:
+        fade_scale = float(fade_cfg.get("scale", 2.0))
+        if FADE_SIZE[1] * fade_scale > FADE_MAX_GLYPH_HEIGHT:
+            fade_scale = FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]
+        fade_layout = {
+            "vn_fade_layout": {
+                "align": "center",
+                "offset": "center",
+                "images": {
+                    1: {
+                        "name": "bottom_cinematic_fade",
+                        "x": int(fade_cfg.get("x", 0)),
+                        "y": 0,
+                        "scale": fade_scale,
+                        "layer": int(fade_cfg.get("layer", 1))
+                    }
+                }
+            }
+        }
+        with open(fade_layout_file, "w", encoding="utf-8") as ff:
+            yaml.dump(fade_layout, ff, default_flow_style=False, sort_keys=False)
+    elif os.path.exists(fade_layout_file):
         os.remove(fade_layout_file)
 
-    # Sync popup definition using single layout (vn_dialog_layout)
+    # Sync popup definition using multi-layout if fade is enabled, else single vn_dialog_layout
     popup_file = os.path.join(BETTERHUD_DIR, "popups", "vn-dialog-popup.yml")
     if os.path.exists(popup_file) or os.path.exists(os.path.dirname(popup_file)):
         os.makedirs(os.path.dirname(popup_file), exist_ok=True)
-        popup_layouts = {
-            1: {
-                "name": "vn_dialog_layout",
+        popup_layouts = {}
+        layout_idx = 1
+        if fade_enabled:
+            popup_layouts[layout_idx] = {
+                "name": "vn_fade_layout",
                 "gui": {"x": 50, "y": 100},
-                "pixel": {"x": popup_pixel_x, "y": -78}
+                "pixel": {
+                    "x": int(fade_cfg.get("x", 0)),
+                    "y": int(fade_cfg.get("y", -45))
+                }
             }
+            layout_idx += 1
+        popup_layouts[layout_idx] = {
+            "name": "vn_dialog_layout",
+            "gui": {"x": 50, "y": 100},
+            "pixel": {"x": popup_pixel_x, "y": -78}
         }
         popup_data = {
             "vn_dialog": {

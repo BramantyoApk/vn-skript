@@ -141,3 +141,46 @@ Bila membuka sesi baru, gunakan urutan verifikasi berikut:
 3. **Pembersihan BossBar Tofu (`▯`)**:
    - Identifikasi karakter persis yang memicu tofu pada title BossBar di Paper 26.2. Pastikan font provider mendaftarkan spasi atau karakter default agar tidak melempar missing glyph.
 
+---
+
+## 7. Investigasi Ghost Portraits & Fade Transparan (Update)
+
+### A. Akar Masalah Potret Bertumpuk (Ghost Portrait Bob di Belakang Luna)
+* **Penyebab**:
+  - BetterHUD mengevaluasi string literal di blok `conditions` menggunakan regex `stringPattern`:
+    ```kotlin
+    Pattern.compile("'\\'(?<content>[\\w|\\W]+)\\\\)'")
+    ```
+  - Pada commit `3f8b098`, tanda petik satu dihapus (`second: speaker_name` dan `second: em`), menghasilkan YAML unquoted string: `second: Bob`.
+  - Ketika `parse0` dieksekusi, `PlaceholderManagerImpl.find("Bob", source)` gagal menemukan placeholder bernama `Bob` dan melempar `RuntimeException("Cannot find placeholder: Bob")`.
+  - Exception ini ditangkap oleh `runCatching` di `Conditions.kt` (`handleFailure`), sehingga sub-kondisi diabaikan dan `ConditionBuilder` **gagal tertutup (default ke `ALWAYS_TRUE`)**.
+  - Dampaknya: **Semua potret karakter (Bob, Luna) dan semua ekspresi dievaluasi sebagai valid/true secara simultan**. Potret Bob otomatis dirender di layer yang sama tepat di belakang potret Luna.
+* **Solusi**:
+  - Bungkus kembali operand kedua dalam string literal quoted di `tools/compiler.py`:
+    ```python
+    "second": f"'{speaker_name}'"
+    "second": f"'{em}'"
+    ```
+  - Serialisasi YAML menghasilkan format yang dipahami regex BetterHUD, sehingga hanya 1 potret sesuai `skript_1` (speaker) dan `skript_4` (emotion) yang aktif.
+
+### B. Cinematic Fade Transparan Tanpa Bug Layout & Tofu
+* **Penyebab Bug Sebelumnya**:
+  - Memasukkan `bottom_cinematic_fade` (lebar 480px) ke dalam layout yang sama (`vn_dialog_layout`) merusak bounding box container BetterHUD, menggeser kotak dialog dan potret secara drastis serta berisiko memicu tofu jika tinggi glyph melebihi 170px.
+* **Solusi Arsitektural**:
+  - Pisahkan `bottom_cinematic_fade` ke dalam layout mandiri: `vn-fade-layout.yml` dengan `align: center`, `offset: center`, `layer: 1`.
+  - Daftarkan `vn_fade_layout` dan `vn_dialog_layout` secara bersamaan dalam satu popup `vn_dialog` di `vn-dialog-popup.yml`:
+    ```yaml
+    vn_dialog:
+      layouts:
+        1:
+          name: vn_fade_layout
+          gui: {x: 50, y: 100}
+          pixel: {x: 0, y: -45}
+        2:
+          name: vn_dialog_layout
+          gui: {x: 50, y: 100}
+          pixel: {x: -178, y: -78}
+    ```
+  - `vn_dialog_layout` tetap terisolasi tanpa pergeseran lebar kontainer, dan fade transparan hitam (alpha gradien 0->220) dirender mulus di latar belakang.
+
+
