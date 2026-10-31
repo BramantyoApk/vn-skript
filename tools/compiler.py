@@ -534,11 +534,13 @@ def compile_portraits_and_betterhud(characters):
                 }
                 text_counter += 1
 
-    # Default `offset: center` is the calibration Story Studio mirrors: container shifted by -(box_w)/2, every
-    # element at origin + x. It only drifts when a wider element (e.g. the 960px fade) sits in the same layout,
-    # which is why the fade now lives in its own layout. `offset: left` + popup pixel.x (-(box_w // 2) * scale)
-    # is available via `layout_offset: left` in hud_config, but in-game it ignored pixel.x, so it is not the default.
-    layout_offset = raw_hud.get("layout_offset", "center")
+    # BetterHud (LayoutComponentContainer/shader) adds `-max/2` of string width for every layout using
+    # `offset: center`. The bossbar shader only yields `anchor + local` when the TOTAL string width is 0, so any
+    # centered layout in the popup (or a merged HUD) drags every other layout sideways. We therefore default to
+    # `offset: left` (adds 0 width) and centre ourselves through popup pixel.x, mirroring Story Studio:
+    #   base_origin_x = mid_x - int((box_w // 2) * box_scale)   (box_w = alpha-bbox width of dialog box)
+    # Set `layout_offset: center` in hud_config to revert.
+    layout_offset = raw_hud.get("layout_offset", "left")
     box_cfg = hud_cfg.get("dialog_box", {})
     box_w = 255
     if os.path.exists(dest_box):
@@ -580,8 +582,8 @@ def compile_portraits_and_betterhud(characters):
             fade_scale = FADE_MAX_GLYPH_HEIGHT / FADE_SIZE[1]
         fade_layout = {
             "vn_fade_layout": {
-                "align": "center",
-                "offset": "center",
+                "align": "left",
+                "offset": layout_offset,
                 "images": {
                     1: {
                         "name": "bottom_cinematic_fade",
@@ -608,9 +610,9 @@ def compile_portraits_and_betterhud(characters):
             popup_layouts[layout_idx] = {
                 "name": "vn_fade_layout",
                 "gui": {"x": 50, "y": 100},
-                # Studio: fade top = baseline + y, where baseline == dialog layout pixel.y (-78)
+                # Studio: fade left = mid_x - rw // 2 + x, top = baseline + y (baseline == dialog pixel.y -78)
                 "pixel": {
-                    "x": int(fade_cfg.get("x", 0)),
+                    "x": int(fade_cfg.get("x", 0)) - (int(FADE_SIZE[0] * fade_scale) // 2 if layout_offset == "left" else 0),
                     "y": DIALOG_BASELINE_Y + int(fade_cfg.get("y", -45))
                 }
             }
