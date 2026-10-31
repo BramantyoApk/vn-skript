@@ -198,7 +198,9 @@ def compile_portraits_and_betterhud(characters):
     """
     ensure_dirs()
     raw_hud = load_hud_config()
-    hud_cfg = raw_hud["elements"]
+    # `enabled: false` on any element drops it from the layout (handy to bisect which one causes tofu)
+    hud_cfg = {k: v for k, v in raw_hud["elements"].items()
+               if not (isinstance(v, dict) and v.get("enabled", True) is False)}
     tex_cfg = raw_hud.get("textures", {})
     box_filename = tex_cfg.get("dialog_box", "dialogue_box.png")
     nameplate_filename = tex_cfg.get("nameplate", "nameplate.png")
@@ -547,10 +549,27 @@ def compile_portraits_and_betterhud(characters):
                 }
                 text_counter += 1
 
+    # `offset: center` shifts the whole container by -(widest element extent)/2, which moves with every
+    # element/text width. `offset: left` pins the container's left edge to the popup anchor, so we centre
+    # the dialog_box ourselves via popup pixel.x (set `layout_offset: center` in hud_config to revert).
+    layout_offset = raw_hud.get("layout_offset", "left")
+    box_cfg = hud_cfg.get("dialog_box", {})
+    box_w = 255
+    if os.path.exists(dest_box):
+        try:
+            from PIL import Image
+            with Image.open(dest_box) as im:
+                box_w = im.size[0]
+        except Exception:
+            pass
+    popup_pixel_x = 0
+    if layout_offset == "left":
+        popup_pixel_x = -int(round(int(box_cfg.get("x", 0)) + box_w * float(box_cfg.get("scale", 1.0)) / 2))
+
     dialog_layout = {
         "vn_dialog_layout": {
             "align": "left",
-            "offset": "center",
+            "offset": layout_offset,
             "images": layout_images,
             "texts": layout_texts
         }
@@ -575,7 +594,7 @@ def compile_portraits_and_betterhud(characters):
             1: {
                 "name": "vn_dialog_layout",
                 "gui": {"x": 50, "y": 100},
-                "pixel": {"x": 0, "y": -78}
+                "pixel": {"x": popup_pixel_x, "y": -78}
             }
         }
         popup_data = {
