@@ -530,12 +530,11 @@ def compile_portraits_and_betterhud(characters):
                 }
                 text_counter += 1
 
-    # `offset: center` shifts the container by a width that depends on the widest element, which is what
-    # moved the box/portrait/text around. `offset: left` pins the container's left edge to the popup anchor,
-    # so we reproduce Story Studio's origin ourselves:
-    #   base_origin_x = mid_x - int((box_w // 2) * box_scale)   (box_w = alpha-bbox width of dialog box)
-    # and every element is drawn at base_origin_x + x. Set `layout_offset: center` in hud_config to revert.
-    layout_offset = raw_hud.get("layout_offset", "left")
+    # Default `offset: center` is the calibration Story Studio mirrors: container shifted by -(box_w)/2, every
+    # element at origin + x. It only drifts when a wider element (e.g. the 960px fade) sits in the same layout,
+    # which is why the fade now lives in its own layout. `offset: left` + popup pixel.x (-(box_w // 2) * scale)
+    # is available via `layout_offset: left` in hud_config, but in-game it ignored pixel.x, so it is not the default.
+    layout_offset = raw_hud.get("layout_offset", "center")
     box_cfg = hud_cfg.get("dialog_box", {})
     box_w = 255
     if os.path.exists(dest_box):

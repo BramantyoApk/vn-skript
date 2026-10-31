@@ -42,3 +42,6 @@ betterhud.jar
 # Temp work folders
 Pixel/
 kr/
+
+# Local copy of the Minecraft server (large, contains world/player data)
+/server/
