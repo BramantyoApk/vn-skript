@@ -68,6 +68,6 @@ custom_elements:
     type: image
     x: 0
     y: -45
-    scale: 2.5
+    scale: 2.0
     layer: 1
     file: textures/bottom_cinematic_fade.png

@@ -103,3 +103,41 @@ Bila membuka sesi baru, gunakan urutan verifikasi berikut:
      ```bash
      python -c "import sys; sys.path.insert(0, 'tools'); from compiler import sync_client_pack; print(sync_client_pack())"
      ```
+
+---
+
+## 6. Laporan Bug: Disparitas Visual In-Game vs Story Studio
+
+### A. Gejala Visual (Screenshot In-Game vs Preview Studio)
+1. **Kotak Dialog & Potret Luna Tergeser ke Kiri**:
+   - In-game: Dialogue box dan portrait terdorong jauh ke tepi kiri layar hingga terpotong.
+   - Studio: Dialogue box berada tepat di tengah bawah layar (di atas hotbar), portrait menempel rapi di sisi kiri kotak.
+2. **Nameplate & Speaker Hilang / Tertutup**:
+   - In-game: Tekstur nameplate tidak terlihat atau berada di luar frame / tertutup layer lain.
+   - Studio: Nameplate terpasang rapi di atas kiri kotak dialog dengan nama pembicara "Luna".
+3. **Teks Dialog Terlempar Keluar Kotak**:
+   - In-game: Teks `"Halo dari testdialog manual!"` merender jauh ke sebelah kanan di luar kotak dialog.
+   - Studio: Teks terbungkus rapi di dalam area teks kotak dialog.
+4. **Tofu Glyph (`▯`) di BossBar Atas**:
+   - In-game: Muncul kotak tofu (`▯`) tepat di tengah atas BossBar.
+   - Analisis: Terdapat karakter (spasi / unmapped glyph) pada title BossBar popup `vn_dialog` yang gagal dipetakan oleh font provider `betterhud:popup_vn_dialog_image` atau shader `text.vsh`.
+
+### B. Akar Masalah Teknis (Root Causes)
+1. **Perbedaan Basis Titik Koordinat (Origin Mismatch)**:
+   - Story Studio (`tools/story_studio.py`):
+     `base_origin_x = mid_x - int((box_w // 2) * dlg_box_scale * sc)`
+     Seluruh elemen (`dialog_box`, `portrait`, `nameplate`, `dialog_text`) dihitung relatif terhadap `base_origin_x`.
+   - BetterHUD Container (`LayoutComponentContainer.class`):
+     Ketika layout di-set `align: left` dengan `offset: center`, titik awal bergeser `-max / 2` (-127 px), namun elemen teks (`TextRenderer`) memproses `this.x` terpisah dari image layout, menghasilkan offset horisontal yang tidak sinkron antara gambar dan teks.
+2. **BossBar Title Missing Glyph**:
+   - Root title BossBar dari `HudPlayerImpl` menggunakan font `betterhud:space` dan font popup `betterhud:popup_vn_dialog_image`. Karakter tertentu yang dikirim dalam packet BossBar tidak memiliki glyph bitmap / advance di atlas sehingga Minecraft merender fallback `▯` di posisi `(screen_width/2, 12)`.
+
+### C. Panduan Pengerjaan untuk Claude
+1. **Sinkronisasi Koordinat Layout (`tools/compiler.py` & `data/hud_config.yml`)**:
+   - Selaraskan kalkulasi anchor dan offset antara `compiler.py` dan `story_studio.py`.
+   - Uji apakah layout popup lebih stabil menggunakan `align: center` murni seperti pada `layouts/test-box.yml` (yang terbukti centered 1:1), atau sesuaikan formula `pixel.x` di compiler agar elemen teks tidak keluar dari bounding box dialog.
+2. **Perbaikan Nameplate & Teks Pembicara**:
+   - Pastikan koordinat `nameplate` dan `speaker_text` memiliki layer z-index dan koordinat lokal yang berada di atas `dialog_box`.
+3. **Pembersihan BossBar Tofu (`▯`)**:
+   - Identifikasi karakter persis yang memicu tofu pada title BossBar di Paper 26.2. Pastikan font provider mendaftarkan spasi atau karakter default agar tidak melempar missing glyph.
+

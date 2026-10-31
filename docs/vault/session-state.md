@@ -8,8 +8,10 @@
 | **RSPM Self-Host** | Fixed | Port 25566 live, `/rspm reload` aktifkan `/rspm.zip` (HTTP 200) |
 | **Client Resource Pack** | Synced | 577 asset di `BetterHud_Pack.zip` (fade 256px terkompilasi) |
 | **Story Studio GUI** | Synced | `bottom_cinematic_fade` terdaftar di combo list, drag-and-drop canvas, & layer 1 |
+| **In-Game Rendering** | Issue | Box/portrait shifted ke kiri, nameplate tertutup, teks terlempar ke kanan, tofu di BossBar |
 
-## Task Selanjutnya
-1. Client player `Bramanzero` reload resource pack (`F3 + T`).
-2. Uji in-game: `/vn testbox` atau `python tools/send_rcon.py "dialog send Bramanzero Luna Halo selamat datang di lembah!"`.
-3. Verifikasi fade hitam transparan muncul mulus di dasar layar tanpa terpotong font atlas.
+## Task Selanjutnya (Untuk Claude)
+1. Perbaiki offset koordinat `vn_dialog_layout` di `tools/compiler.py` dan `data/hud_config.yml` agar dialog box & portrait kembali centered di layar seperti Story Studio.
+2. Sinkronkan posisi X `dialog_text` dan `speaker_text` agar tertata di dalam bounding box `dialog_box`.
+3. Telusuri dan eliminasi karakter missing glyph pada BossBar popup `vn_dialog` yang memicu tofu (`▯`).
+4. Pastikan `nameplate` terlihat di layer depan (`layer: 4` di atas `dialog_box` layer 2).
