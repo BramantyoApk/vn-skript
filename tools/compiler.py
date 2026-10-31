@@ -23,7 +23,7 @@ CHARACTERS_DIR = os.path.join(DATA_DIR, "characters")
 DIALOGUES_DIR = os.path.join(DATA_DIR, "dialogues")
 HUD_CONFIG_FILE = os.path.join(DATA_DIR, "hud_config.yml")
 
-SERVER_DIR = os.path.join(WORKSPACE_ROOT, "server")
+SERVER_DIR = os.environ.get("VN_SERVER_DIR") or os.path.join(WORKSPACE_ROOT, "server")
 BETTERHUD_DIR = os.path.join(SERVER_DIR, "plugins", "BetterHud")
 BETTERHUD_ASSETS_DIR = os.path.join(BETTERHUD_DIR, "assets", "dialog")
 BETTERHUD_IMAGES_FILE = os.path.join(BETTERHUD_DIR, "images", "dialog-images.yml")
@@ -32,7 +32,7 @@ BETTERHUD_BUILD_ZIP = os.path.join(BETTERHUD_DIR, "build.zip")
 
 SKRIPT_SCRIPTS_DIR = os.path.join(SERVER_DIR, "plugins", "Skript", "scripts")
 LOCAL_SCRIPTS_DIR = BASE_DIR
-CLIENT_PACK_DIR = r"C:\ATLauncher\instances\262\resourcepacks\BetterHud_Pack"
+CLIENT_PACK_DIR = os.environ.get("VN_CLIENT_PACK_DIR") or r"C:\ATLauncher\instances\262\resourcepacks\BetterHud_Pack"
 STUDIO_CONFIG_FILE = os.path.join(DATA_DIR, "studio_config.yml")
 
 STANDARD_EMOTIONS = ["biasa", "bahagia", "marah", "sedih", "unique"]
@@ -93,6 +93,8 @@ def ensure_dirs():
     os.makedirs(CHARACTERS_DIR, exist_ok=True)
     os.makedirs(DIALOGUES_DIR, exist_ok=True)
     os.makedirs(BETTERHUD_ASSETS_DIR, exist_ok=True)
+    for d in (BETTERHUD_IMAGES_FILE, BETTERHUD_LAYOUT_FILE):
+        os.makedirs(os.path.dirname(d), exist_ok=True)
 
 def load_characters():
     characters = {}
@@ -366,12 +368,8 @@ def compile_portraits_and_betterhud(characters):
         spk_align = spk_cfg.get("align", "left")
 
         # Enforce minimum layer 4 for text shadow so BetterHUD shader doesn't clip (layer: 0 bug)
-        shadow_layer = max(1, spk_layer - 1)
-        if spk_layer <= 1:
-            shadow_layer = 4
-            spk_render_layer = 5
-        else:
-            spk_render_layer = spk_layer
+        spk_render_layer = max(spk_layer, 6)
+        shadow_layer = spk_render_layer - 1
 
         # Two-layer text: Shadow (offset +1,+1 in <#111111>)
         layout_texts[text_counter] = {
@@ -409,12 +407,9 @@ def compile_portraits_and_betterhud(characters):
         dlg_line_w = int(dlg_cfg.get("line_width", 9))
         dlg_align = dlg_cfg.get("align", "left")
 
-        shadow_dlg_layer = max(1, dlg_layer - 1)
-        if dlg_layer <= 1:
-            shadow_dlg_layer = 4
-            dlg_render_layer = 5
-        else:
-            dlg_render_layer = dlg_layer
+        # Dialog text must render above dialog_box (2) / portrait (3) / nameplate (4)
+        dlg_render_layer = max(dlg_layer, 6)
+        shadow_dlg_layer = dlg_render_layer - 1
 
         # Two-layer text: Shadow (offset +1,+1 in <#111111>)
         layout_texts[text_counter] = {
@@ -642,12 +637,32 @@ def generate_skript_dialogues(characters, dialogues):
     server_path = os.path.join(SKRIPT_SCRIPTS_DIR, "story", "story_dialogues.sk")
     local_path = os.path.join(LOCAL_SCRIPTS_DIR, "story_dialogues.sk")
     
+    os.makedirs(os.path.dirname(server_path), exist_ok=True)
     with open(server_path, "w", encoding="utf-8") as f:
         f.write(sk_content)
     with open(local_path, "w", encoding="utf-8") as f:
         f.write(sk_content)
 
     return server_path
+
+def validate_font_json(name, raw):
+    """Flags bitmap providers whose ascent > height (non-encoded) which Minecraft rejects."""
+    if not (name.endswith('.json') and '/font/' in name):
+        return []
+    import json
+    try:
+        providers = json.loads(raw.decode('utf-8')).get('providers', [])
+    except Exception as e:
+        return [f"{name}: invalid JSON ({e})"]
+    out = []
+    for i, prov in enumerate(providers):
+        if prov.get('type') != 'bitmap':
+            continue
+        asc, hgt = prov.get('ascent', 0), prov.get('height', 8)
+        # BetterHUD encodes screen coordinates in large negative ascents; those are intentional
+        if asc >= 0 and asc > hgt:
+            out.append(f"{name}: provider #{i} ascent {asc} > height {hgt}")
+    return out
 
 def sync_client_pack():
     """
@@ -675,6 +690,8 @@ def sync_client_pack():
     count = 0
     import io
     buf = io.BytesIO()
+    shader_src = {}
+    problems = []
     with zipfile.ZipFile(BETTERHUD_BUILD_ZIP, 'r') as zin, zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             name = item.filename
@@ -695,11 +712,16 @@ def sync_client_pack():
                 'image_image_' in nl):
                 continue
 
-            # Skip copying existing root shaders from source; they will be generated below
-            if name.startswith('assets/minecraft/shaders/core/'):
-                continue
-
             raw = zin.read(name)
+
+            # Root shaders are (re)written below; remember source variants, skip the raw copy
+            if name.startswith('assets/minecraft/shaders/core/'):
+                shader_src.setdefault(os.path.basename(name), raw)
+                continue
+            if name.startswith('betterhud_26_2/assets/minecraft/shaders/core/'):
+                shader_src[os.path.basename(name)] = raw
+
+            problems.extend(validate_font_json(name, raw))
             if name == 'pack.mcmeta':
                 try:
                     import json
@@ -715,18 +737,23 @@ def sync_client_pack():
             zout.writestr(item, raw)
             count += 1
 
-            # Mirror 26_2 shaders to root assets for MC 26.2 compatibility
-            if name == 'betterhud_26_2/assets/minecraft/shaders/core/text.vsh':
-                zout.writestr('assets/minecraft/shaders/core/text.vsh', raw)
-                zout.writestr('assets/minecraft/shaders/core/rendertype_text.vsh', raw)
-            elif name == 'betterhud_26_2/assets/minecraft/shaders/core/text.fsh':
-                zout.writestr('assets/minecraft/shaders/core/text.fsh', raw)
-                zout.writestr('assets/minecraft/shaders/core/rendertype_text.fsh', raw)
+
+        # Always place text/rendertype_text shaders at the pack root for MC 26.2
+        for ext in ('vsh', 'fsh'):
+            raw = shader_src.get(f'text.{ext}')
+            if raw is None:
+                problems.append(f"shader text.{ext} not found in build.zip; BossBar text will render as tofu")
+                continue
+            for target in (f'text.{ext}', f'rendertype_text.{ext}'):
+                zout.writestr(f'assets/minecraft/shaders/core/{target}', raw)
+                count += 1
 
     buf_data = buf.getvalue()
     with open(zip_dest, 'wb') as f:
         f.write(buf_data)
 
+    for msg in problems:
+        print(f"[WARN] {msg}")
     return count, f"Sync complete & packed into {os.path.basename(zip_dest)}"
 
 def compile_all():
