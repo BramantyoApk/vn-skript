@@ -25,12 +25,12 @@ elements:
     align: left
     outline: true
   dialog_text:
+    enabled: false
     x: 55
     y: 2
     scale: 0.46
     color: <#F0F0F0>
-    line: 4
-    split_width: 202
+    line: 1
     line_width: 9
     space: 0
     layer: 2

@@ -372,7 +372,7 @@ def compile_portraits_and_betterhud(characters):
     layout_texts = {}
     text_counter = 1
 
-    if "speaker_text" in hud_cfg:
+    if "speaker_text" in hud_cfg and isinstance(hud_cfg["speaker_text"], dict) and hud_cfg["speaker_text"].get("enabled", True):
         spk_cfg = hud_cfg["speaker_text"]
         spk_layer = int(spk_cfg.get("layer", DEFAULT_HUD_LAYERS["speaker_text"]))
         spk_x = int(spk_cfg.get("x", 64))
@@ -408,7 +408,7 @@ def compile_portraits_and_betterhud(characters):
         }
         text_counter += 1
 
-    if "dialog_text" in hud_cfg:
+    if "dialog_text" in hud_cfg and isinstance(hud_cfg["dialog_text"], dict) and hud_cfg["dialog_text"].get("enabled", True):
         dlg_cfg = hud_cfg["dialog_text"]
         dlg_layer = int(dlg_cfg.get("layer", DEFAULT_HUD_LAYERS["dialog_text"]))
         dlg_x = int(dlg_cfg.get("x", 98))
@@ -416,7 +416,7 @@ def compile_portraits_and_betterhud(characters):
         dlg_scale = float(dlg_cfg.get("scale", 0.46))
         dlg_space = int(dlg_cfg.get("space", 0))
         dlg_line = int(dlg_cfg.get("line", 4))
-        dlg_split = int(dlg_cfg.get("split_width", 145))
+        dlg_split = dlg_cfg.get("split_width")
         dlg_line_w = int(dlg_cfg.get("line_width", 9))
         dlg_align = dlg_cfg.get("align", "left")
 
@@ -425,7 +425,7 @@ def compile_portraits_and_betterhud(characters):
         shadow_dlg_layer = dlg_render_layer - 1
 
         # Two-layer text: Shadow (offset +1,+1 in <#111111>)
-        layout_texts[text_counter] = {
+        shadow_entry = {
             "name": "dialog_font",
             "pattern": "<#111111>[custom_variable:skript_2]",
             "x": dlg_x + 1,
@@ -434,15 +434,17 @@ def compile_portraits_and_betterhud(characters):
             "scale": dlg_scale,
             "space": dlg_space,
             "line": dlg_line,
-            "split-width": dlg_split,
-            "line-width": dlg_line_w,
-            "force-split": False,
             "layer": shadow_dlg_layer
         }
+        if dlg_split is not None and int(dlg_split) > 0:
+            shadow_entry["split-width"] = int(dlg_split)
+            shadow_entry["line-width"] = dlg_line_w
+            shadow_entry["force-split"] = False
+        layout_texts[text_counter] = shadow_entry
         text_counter += 1
 
         # Foreground Text
-        layout_texts[text_counter] = {
+        fore_entry = {
             "name": "dialog_font",
             "pattern": f"{dlg_cfg.get('color', '<#F0F0F0>')}[custom_variable:skript_2]",
             "x": dlg_x,
@@ -451,11 +453,13 @@ def compile_portraits_and_betterhud(characters):
             "scale": dlg_scale,
             "space": dlg_space,
             "line": dlg_line,
-            "split-width": dlg_split,
-            "line-width": dlg_line_w,
-            "force-split": False,
             "layer": dlg_render_layer
         }
+        if dlg_split is not None and int(dlg_split) > 0:
+            fore_entry["split-width"] = int(dlg_split)
+            fore_entry["line-width"] = dlg_line_w
+            fore_entry["force-split"] = False
+        layout_texts[text_counter] = fore_entry
         text_counter += 1
 
     # Keep fade inside same layout. Center alignment preserves each element's local offset.
