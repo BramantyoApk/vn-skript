@@ -40,19 +40,7 @@ function handleStoryNpc_luna(p: player, loc: location):
 	set {_stage} to {story::luna::%{_uuid}%::stage} ? "NOT_STARTED"
 	storyClearDialogueQueue({_p})
 
-	if {_stage} is "Q2_ACTIVE":
-		storyQueueDialogue({_p}, "Luna", "Belum ketemu pohon apelnya? Ada di tebing sebelah barat desa.", "", 1.0, "biasa")
-		storyQueueDialogue({_p}, "Luna", "Petik 5 Apple ranum ya. Aku sangat membutuhkan nutrisi segar.", "", 1.0, "sedih")
-		storyStartDialogueQueue({_p}, "", {_loc})
-	else if {_stage} is "Q1_ACTIVE":
-		storyQueueDialogue({_p}, "Luna", "Sudah dapat gandumnya? Perutku mulai berbunyi dari tadi, haha...", "", 1.0, "biasa")
-		storyQueueDialogue({_p}, "Luna", "Kumpulkan 10 Wheat segar dari ladang ya. Nanti kita olah bersama!", "", 1.0, "sedih")
-		storyStartDialogueQueue({_p}, "", {_loc})
-	else if {_stage} is "Q3_INVESTIGATE":
-		storyQueueDialogue({_p}, "Luna", "Berhati-hatilah di sekitar Sumur Tua itu.", "", 1.0, "sedih")
-		storyQueueDialogue({_p}, "Luna", "Hawa dingin di sana tidak wajar. Segera mundur jika ada hal yang mengancam!", "", 1.0, "unique")
-		storyStartDialogueQueue({_p}, "", {_loc})
-	else if {_stage} is "NOT_STARTED":
+	if {_stage} is "NOT_STARTED":
 		storyQueueDialogue({_p}, "Luna", "Glek... glek... Haah, enaknya! Minuman di desa ini benar-benar juara!", "", 1.0, "bahagia")
 		storyQueueDialogue({_p}, "Luna", "Syukurlah aku tidak salah jalan menempuh perjalanan jauh demi mencari pekerjaan.", "", 1.0, "biasa")
 		storyQueueDialogue({_p}, "Luna", "AAAA!", "", 1.0, "unique")
@@ -64,3 +52,15 @@ function handleStoryNpc_luna(p: player, loc: location):
 		storyQueueDialogue({_p}, "Luna", "Tanpa pikir panjang langsung ku-apply saja! Dan ta-da, sekarang aku terdampar di sini deh!", "", 1.0, "bahagia")
 		storyQueueDialogue({_p}, "Luna", "Jadi, apa kamu mau mengambil quest, atau hanya ingin menemaniku minum?", "", 1.0, "biasa")
 		storyStartDialogueQueue({_p}, "CALLBACK_LUNA_INTRO", {_loc})
+	else if {_stage} is "Q1_ACTIVE":
+		storyQueueDialogue({_p}, "Luna", "Sudah dapat gandumnya? Perutku mulai berbunyi dari tadi, haha...", "", 1.0, "biasa")
+		storyQueueDialogue({_p}, "Luna", "Kumpulkan 10 Wheat segar dari ladang ya. Nanti kita olah bersama!", "", 1.0, "sedih")
+		storyStartDialogueQueue({_p}, "", {_loc})
+	else if {_stage} is "Q2_ACTIVE":
+		storyQueueDialogue({_p}, "Luna", "Belum ketemu pohon apelnya? Ada di tebing sebelah barat desa.", "", 1.0, "biasa")
+		storyQueueDialogue({_p}, "Luna", "Petik 5 Apple ranum ya. Aku sangat membutuhkan nutrisi segar.", "", 1.0, "sedih")
+		storyStartDialogueQueue({_p}, "", {_loc})
+	else if {_stage} is "Q3_INVESTIGATE":
+		storyQueueDialogue({_p}, "Luna", "Berhati-hatilah di sekitar Sumur Tua itu.", "", 1.0, "sedih")
+		storyQueueDialogue({_p}, "Luna", "Hawa dingin di sana tidak wajar. Segera mundur jika ada hal yang mengancam!", "", 1.0, "unique")
+		storyStartDialogueQueue({_p}, "", {_loc})

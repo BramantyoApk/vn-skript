@@ -298,12 +298,12 @@ def compile_portraits_and_betterhud(characters):
                     "conditions": {
                         1: {
                             "first": "custom_variable:skript_1",
-                            "second": f"'{speaker_name}'",
+                            "second": speaker_name,
                             "operation": "=="
                         },
                         2: {
                             "first": "custom_variable:skript_4",
-                            "second": f"'{em}'",
+                            "second": em,
                             "operation": "=="
                         }
                     }
@@ -321,12 +321,12 @@ def compile_portraits_and_betterhud(characters):
                         "conditions": {
                             1: {
                                 "first": "custom_variable:skript_1",
-                                "second": f"'{speaker_name}'",
+                                "second": speaker_name,
                                 "operation": "=="
                             },
                             2: {
                                 "first": "custom_variable:skript_4",
-                                "second": "'kustom'",
+                                "second": "kustom",
                                 "operation": "=="
                             }
                         }
